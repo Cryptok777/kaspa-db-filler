@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from dotenv import load_dotenv
 
 from BlocksProcessor import BlocksProcessor
 from VirtualChainProcessor import VirtualChainProcessor
@@ -8,15 +9,16 @@ from dbsession import create_all, session_maker
 from kaspad.KaspadMultiClient import KaspadMultiClient
 from models.Transaction import Transaction
 
-logging.basicConfig(format="%(asctime)s::%(levelname)s::%(name)s::%(message)s",
-                    level=logging.DEBUG if os.getenv("DEBUG", False) else logging.INFO,
-                    handlers=[
-                        logging.StreamHandler()
-                    ]
-                    )
+load_dotenv(override=True)
+
+logging.basicConfig(
+    format="%(asctime)s::%(levelname)s::%(name)s::%(message)s",
+    level=logging.DEBUG if os.getenv("DEBUG", False) else logging.INFO,
+    handlers=[logging.StreamHandler()],
+)
 
 # disable sqlalchemy notifications
-logging.getLogger('sqlalchemy').setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 
 # get file logger
 _logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ for i in range(100):
         break
 
 if not kaspad_hosts:
-    raise Exception('Please set at least KASPAD_HOST_1 environment variable.')
+    raise Exception("Please set at least KASPAD_HOST_1 environment variable.")
 
 # create Kaspad client
 client = KaspadMultiClient(kaspad_hosts)
@@ -47,12 +49,14 @@ async def main():
     # find last acceptedTx's block hash, when restarting this tool
     with session_maker() as s:
         try:
-            start_hash = s.query(Transaction) \
-                .where(Transaction.is_accepted == True) \
-                .order_by(Transaction.block_time.desc()) \
-                .limit(1) \
-                .first() \
+            start_hash = (
+                s.query(Transaction)
+                .where(Transaction.is_accepted == True)
+                .order_by(Transaction.block_time.desc())
+                .limit(1)
+                .first()
                 .accepting_block_hash
+            )
         except AttributeError:
             start_hash = None
 
@@ -75,7 +79,7 @@ async def main():
         if task_runner and not task_runner.done():
             return
 
-        _logger.debug('Update is_accepted for TXs.')
+        _logger.debug("Update is_accepted for TXs.")
         task_runner = asyncio.create_task(vcp.yield_to_database())
 
     # set up event to fire after adding new blocks
@@ -86,17 +90,19 @@ async def main():
         try:
             await bp.loop(start_hash)
         except Exception:
-            _logger.exception('Exception occured and script crashed. Restart in 1m')
+            _logger.exception("Exception occured and script crashed. Restart in 1m")
             bp.synced = False
             await asyncio.sleep(60)
             with session_maker() as s:
-                start_hash = s.query(Transaction) \
-                    .where(Transaction.is_accepted == True) \
-                    .order_by(Transaction.block_time.desc()) \
-                    .limit(1) \
-                    .first() \
+                start_hash = (
+                    s.query(Transaction)
+                    .where(Transaction.is_accepted == True)
+                    .order_by(Transaction.block_time.desc())
+                    .limit(1)
+                    .first()
                     .accepting_block_hash
+                )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

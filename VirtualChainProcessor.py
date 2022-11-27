@@ -35,50 +35,67 @@ class VirtualChainProcessor(object):
             return
 
         parent_chain_response = self.virtual_chain_response
-        parent_chain_blocks = [x['acceptingBlockHash'] for x in parent_chain_response['acceptedTransactionIds']]
+        parent_chain_blocks = [
+            x["acceptingBlockHash"]
+            for x in parent_chain_response["acceptedTransactionIds"]
+        ]
 
         # find intersection of database blocks and virtual parent chain
         with session_maker() as s:
-            parent_chain_blocks_in_db = s.query(Block) \
-                .filter(Block.hash.in_(parent_chain_blocks)) \
-                .with_entities(Block.hash).all()
+            parent_chain_blocks_in_db = (
+                s.query(Block)
+                .filter(Block.hash.in_(parent_chain_blocks))
+                .with_entities(Block.hash)
+                .all()
+            )
             parent_chain_blocks_in_db = [x[0] for x in parent_chain_blocks_in_db]
 
         # parent_chain_blocks_in_db = parent_chain_blocks_in_db[:200]
 
         # go through all acceptedTransactionIds and stop if a block hash is not in database
-        for tx_accept_dict in parent_chain_response['acceptedTransactionIds']:
-            accepting_block_hash = tx_accept_dict['acceptingBlockHash']
+        for tx_accept_dict in parent_chain_response["acceptedTransactionIds"]:
+            accepting_block_hash = tx_accept_dict["acceptingBlockHash"]
 
             if accepting_block_hash not in parent_chain_blocks_in_db:
                 break  # Stop once we reached a none existing block
 
             last_known_chain_block = accepting_block_hash
-            accepted_ids.append((tx_accept_dict['acceptingBlockHash'], tx_accept_dict["acceptedTransactionIds"]))
+            accepted_ids.append(
+                (
+                    tx_accept_dict["acceptingBlockHash"],
+                    tx_accept_dict["acceptedTransactionIds"],
+                )
+            )
 
             if len(accepted_ids) >= 5000:
                 break
 
         # add rejected blocks if needed
-        rejected_blocks.extend(parent_chain_response.get('removedChainBlockHashes', []))
+        rejected_blocks.extend(parent_chain_response.get("removedChainBlockHashes", []))
 
         with session_maker() as s:
             # set is_accepted to False, when blocks were removed from virtual parent chain
             if rejected_blocks:
-                count = s.query(Transaction).filter(Transaction.accepting_block_hash.in_(rejected_blocks)) \
-                    .update({'is_accepted': False, 'accepting_block_hash': None})
-                _logger.debug(f'Set is_accepted=False for {count} TXs')
+                count = (
+                    s.query(Transaction)
+                    .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
+                    .update({"is_accepted": False, "accepting_block_hash": None})
+                )
+                _logger.debug(f"Set is_accepted=False for {count} TXs")
                 s.commit()
 
             count_tx = 0
 
             # set is_accepted to True and add accepting_block_hash
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(Transaction).filter(Transaction.transaction_id.in_(accepted_tx_ids)) \
-                    .update({'is_accepted': True, 'accepting_block_hash': accepting_block_hash})
+                s.query(Transaction).filter(
+                    Transaction.transaction_id.in_(accepted_tx_ids)
+                ).update(
+                    {"is_accepted": True, "accepting_block_hash": accepting_block_hash}
+                )
                 count_tx += len(accepted_tx_ids)
 
-            _logger.debug(f'Set is_accepted=True for {count_tx} transactions.')
+            _logger.debug(f"Set is_accepted=True for {count_tx} transactions.")
             s.commit()
 
         # Mark last known/processed as start point for the next query
@@ -92,14 +109,17 @@ class VirtualChainProcessor(object):
         """
         Add known blocks to database
         """
-        resp = await self.client.request("getVirtualSelectedParentChainFromBlockRequest",
-                                         {"startHash": self.start_point,
-                                          "includeAcceptedTransactionIds": True},
-                                         timeout=120)
+        resp = await self.client.request(
+            "getVirtualSelectedParentChainFromBlockRequest",
+            {"startHash": self.start_point, "includeAcceptedTransactionIds": True},
+            timeout=120,
+        )
 
         # if there is a response, add to queue and set new startpoint
         if resp["getVirtualSelectedParentChainFromBlockResponse"]:
-            self.virtual_chain_response = resp["getVirtualSelectedParentChainFromBlockResponse"]
+            self.virtual_chain_response = resp[
+                "getVirtualSelectedParentChainFromBlockResponse"
+            ]
         else:
             self.virtual_chain_response = None
 

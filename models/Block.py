@@ -1,10 +1,19 @@
-from sqlalchemy import Column, String, Float, Boolean, ARRAY, Integer, BigInteger, TIMESTAMP
+from sqlalchemy import (
+    Column,
+    String,
+    Float,
+    Boolean,
+    ARRAY,
+    Integer,
+    BigInteger,
+    TIMESTAMP,
+)
 
 from dbsession import Base
 
 
 class Block(Base):
-    __tablename__ = 'blocks'
+    __tablename__ = "blocks"
 
     hash = Column(String, primary_key=True)
     accepted_id_merkle_root = Column(String)
@@ -25,4 +34,3 @@ class Block(Base):
     timestamp = Column(TIMESTAMP(timezone=False))
     utxo_commitment = Column(String)
     version = Column(Integer)
-
