@@ -41,15 +41,10 @@ if not kaspad_hosts:
 client = KaspadMultiClient(kaspad_hosts)
 task_runner = None
 
-
-async def main():
-    # initialize kaspads
-    await client.initialize_all()
-
-    # find last acceptedTx's block hash, when restarting this tool
+async def get_start_block_hash():
     with session_maker() as s:
         try:
-            start_hash = (
+            return (
                 s.query(Transaction)
                 .where(Transaction.is_accepted == True)
                 .order_by(Transaction.block_time.desc())
@@ -58,7 +53,15 @@ async def main():
                 .accepting_block_hash
             )
         except AttributeError:
-            start_hash = None
+            return None
+    
+    
+async def main():
+    # initialize kaspads
+    await client.initialize_all()
+
+    # find last acceptedTx's block hash, when restarting this tool
+    start_hash = await get_start_block_hash()
 
     # if there is nothing in the db, just get latest block.
     if not start_hash:
@@ -93,15 +96,7 @@ async def main():
             _logger.exception("Exception occured and script crashed. Restart in 1m")
             bp.synced = False
             await asyncio.sleep(60)
-            with session_maker() as s:
-                start_hash = (
-                    s.query(Transaction)
-                    .where(Transaction.is_accepted == True)
-                    .order_by(Transaction.block_time.desc())
-                    .limit(1)
-                    .first()
-                    .accepting_block_hash
-                )
+            start_hash = await get_start_block_hash()
 
 
 if __name__ == "__main__":

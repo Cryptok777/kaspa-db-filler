@@ -5,6 +5,7 @@ import logging
 from dbsession import session_maker
 from models.Block import Block
 from models.Transaction import Transaction
+from models.TxAddrMapping import TxAddrMapping
 
 _logger = logging.getLogger(__name__)
 
@@ -76,13 +77,22 @@ class VirtualChainProcessor(object):
         with session_maker() as s:
             # set is_accepted to False, when blocks were removed from virtual parent chain
             if rejected_blocks:
-                count = (
-                    s.query(Transaction)
-                    .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
-                    .update({"is_accepted": False, "accepting_block_hash": None})
-                )
-                _logger.debug(f"Set is_accepted=False for {count} TXs")
+                _logger.debug(f'Found rejected blocks: {rejected_blocks}')
+                count = s.query(Transaction).filter(Transaction.accepting_block_hash.in_(rejected_blocks)) \
+                    .update({'is_accepted': False, 'accepting_block_hash': None})
+                _logger.info(f'Set is_accepted=False for {count} TXs')
                 s.commit()
+
+                rejected_tx_ids = [x[0] for x in s.query(Transaction.transaction_id) \
+                    .filter(Transaction.accepting_block_hash
+                            .in_(rejected_blocks)).all()]
+
+                _logger.info(f'Now set is_accepted=False for {rejected_tx_ids}.')
+                if rejected_tx_ids:
+                    s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids)) \
+                        .update({'is_accepted': False})
+                    s.commit()
+                    _logger.info('Set is_accepted=False done.')
 
             count_tx = 0
 
@@ -98,6 +108,13 @@ class VirtualChainProcessor(object):
             _logger.debug(f"Set is_accepted=True for {count_tx} transactions.")
             s.commit()
 
+            # set is_accepted in tx<->addr mapping table
+            for accepting_block_hash, accepted_tx_ids in accepted_ids:
+                s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids)) \
+                    .update({'is_accepted': True})
+
+            s.commit()
+
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
             self.start_point = last_known_chain_block
@@ -105,9 +122,9 @@ class VirtualChainProcessor(object):
         # Clear the current response
         self.virtual_chain_response = None
 
-    async def yield_to_database(self):
+    async def update_accepted_info(self):
         """
-        Add known blocks to database
+        Updates the is_accepted flag to all blocks
         """
         resp = await self.client.request(
             "getVirtualSelectedParentChainFromBlockRequest",
@@ -123,4 +140,6 @@ class VirtualChainProcessor(object):
         else:
             self.virtual_chain_response = None
 
+        _logger.debug('Updating TXs in DB')
         await self.__update_transactions_in_db()
+        _logger.debug('Updating TXs in DB done.')
