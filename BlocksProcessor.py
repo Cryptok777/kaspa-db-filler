@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from datetime import datetime
+from typing import List
 
 import sqlalchemy.exc
 from sqlalchemy.exc import IntegrityError
 
 from dbsession import session_maker
+from models.AddressBalance import AddressBalance
 from models.Block import Block
 from models.Transaction import Transaction, TransactionOutput, TransactionInput
 from models.TxAddrMapping import TxAddrMapping
@@ -50,7 +52,9 @@ class BlocksProcessor(object):
                 await self.__add_tx_to_queue(block_hash, block)
 
             # if cluster size is reached, insert to database
-            bcc = len(self.blocks_to_add) >= (CLUSTER_SIZE_INITIAL if not self.synced else CLUSTER_SIZE_SYNCED)
+            bcc = len(self.blocks_to_add) >= (
+                CLUSTER_SIZE_INITIAL if not self.synced else CLUSTER_SIZE_SYNCED
+            )
 
             # or we are waiting and cache is not empty
             if bcc or (block_hash is None and len(self.blocks_to_add) >= 1):
@@ -81,7 +85,6 @@ class BlocksProcessor(object):
 
             # go through each block and yield
             for i, _ in enumerate(resp["getBlocksResponse"].get("blockHashes", [])):
-
                 if not self.synced:
                     if daginfo["getBlockDagInfoResponse"]["tipHashes"][0] == _:
                         _logger.info("Found tip hash. Generator is synced now.")
@@ -103,15 +106,20 @@ class BlocksProcessor(object):
 
             # if synced, poll blocks after 1s
             if self.synced:
-                _logger.debug(f'Iterator waiting {CLUSTER_WAIT_SECONDS}s for next request.')
+                _logger.debug(
+                    f"Iterator waiting {CLUSTER_WAIT_SECONDS}s for next request."
+                )
                 yield None, None
                 await asyncio.sleep(CLUSTER_WAIT_SECONDS)
 
     def __get_address_from_tx_outputs(self, transaction_id, index):
         with session_maker() as session:
-            return session.query(TransactionOutput.script_public_key_address) \
-                .where(TransactionOutput.transaction_id == transaction_id) \
-                .where(TransactionOutput.index == index).scalar()
+            return (
+                session.query(TransactionOutput.script_public_key_address)
+                .where(TransactionOutput.transaction_id == transaction_id)
+                .where(TransactionOutput.index == index)
+                .scalar()
+            )
 
     async def __add_tx_to_queue(self, block_hash, block):
         """
@@ -138,67 +146,129 @@ class BlocksProcessor(object):
                 # Add transactions output
                 for index, out in enumerate(transaction["outputs"]):
                     self.txs_output.append(
-                        TransactionOutput(transaction_id=transaction["verboseData"]["transactionId"],
-                                          index=index,
-                                          amount=out["amount"],
-                                          script_public_key=out["scriptPublicKey"]["scriptPublicKey"],
-                                          script_public_key_address=out["verboseData"]["scriptPublicKeyAddress"],
-                                          script_public_key_type=out["verboseData"]["scriptPublicKeyType"]))
+                        TransactionOutput(
+                            transaction_id=transaction["verboseData"]["transactionId"],
+                            index=index,
+                            amount=out["amount"],
+                            script_public_key=out["scriptPublicKey"]["scriptPublicKey"],
+                            script_public_key_address=out["verboseData"][
+                                "scriptPublicKeyAddress"
+                            ],
+                            script_public_key_type=out["verboseData"][
+                                "scriptPublicKeyType"
+                            ],
+                        )
+                    )
 
                     self.tx_addr_mapping.append(
-                        TxAddrMapping(transaction_id=transaction["verboseData"]["transactionId"],
-                                      address=out["verboseData"]["scriptPublicKeyAddress"],
-                                      block_time=int(transaction["verboseData"]["blockTime"]),
-                                      is_accepted=False))
+                        TxAddrMapping(
+                            transaction_id=transaction["verboseData"]["transactionId"],
+                            address=out["verboseData"]["scriptPublicKeyAddress"],
+                            block_time=int(transaction["verboseData"]["blockTime"]),
+                            is_accepted=False,
+                        )
+                    )
 
                 # Add transactions input
                 for index, tx_in in enumerate(transaction.get("inputs", [])):
                     self.txs_input.append(
-                        TransactionInput(transaction_id=transaction["verboseData"]["transactionId"],
-                                         index=index,
-                                         previous_outpoint_hash=tx_in["previousOutpoint"]["transactionId"],
-                                         previous_outpoint_index=tx_in["previousOutpoint"].get("index", 0),
-                                         signature_script=tx_in["signatureScript"],
-                                         sig_op_count=tx_in["sigOpCount"]))
+                        TransactionInput(
+                            transaction_id=transaction["verboseData"]["transactionId"],
+                            index=index,
+                            previous_outpoint_hash=tx_in["previousOutpoint"][
+                                "transactionId"
+                            ],
+                            previous_outpoint_index=tx_in["previousOutpoint"].get(
+                                "index", 0
+                            ),
+                            signature_script=tx_in["signatureScript"],
+                            sig_op_count=tx_in["sigOpCount"],
+                        )
+                    )
 
                     inp_address = self.__get_address_from_tx_outputs(
                         tx_in["previousOutpoint"]["transactionId"],
-                        tx_in["previousOutpoint"].get("index", 0))
+                        tx_in["previousOutpoint"].get("index", 0),
+                    )
 
                     # if tx is in the output cache and not in DB yet
                     if inp_address is None:
                         for output in self.txs_output:
-                            if output.transaction_id == tx_in["previousOutpoint"]["transactionId"] and \
-                                    output.index == tx_in["previousOutpoint"].get("index", 0):
+                            if output.transaction_id == tx_in["previousOutpoint"][
+                                "transactionId"
+                            ] and output.index == tx_in["previousOutpoint"].get(
+                                "index", 0
+                            ):
                                 inp_address = output.script_public_key_address
                                 break
                         else:
-                            _logger.warning(f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
-                                            f" ({tx_in['previousOutpoint'].get('index', 0)})")
+                            _logger.warning(
+                                f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
+                                f" ({tx_in['previousOutpoint'].get('index', 0)})"
+                            )
 
                     self.tx_addr_mapping.append(
-                        TxAddrMapping(transaction_id=transaction["verboseData"]["transactionId"],
-                                      address=inp_address,
-                                      block_time=int(transaction["verboseData"]["blockTime"]),
-                                      is_accepted=False))
+                        TxAddrMapping(
+                            transaction_id=transaction["verboseData"]["transactionId"],
+                            address=inp_address,
+                            block_time=int(transaction["verboseData"]["blockTime"]),
+                            is_accepted=False,
+                        )
+                    )
             else:
                 # If the block is already in the Queue, merge the block_hashes.
-                self.txs[tx_id].block_hash = list(set(self.txs[tx_id].block_hash + [block_hash]))
+                self.txs[tx_id].block_hash = list(
+                    set(self.txs[tx_id].block_hash + [block_hash])
+                )
+
+    async def __get_balances_for_addresses(self, addresses: List[str]):
+        resp = await self.client.request(
+            "getBalancesByAddressesRequest",
+            params={"addresses": addresses},
+            timeout=60,
+        )
+
+        return [
+            AddressBalance(address=i["address"], balance=int(i.get("balance", 0)))
+            for i in resp["getBalancesByAddressesResponse"]["entries"]
+            if int(i.get("balance", 0)) > 0
+        ]
 
     async def add_and_commit_tx_addr_mapping(self):
         cnt = 0
+        addresses_to_find_balance = set()
+
         with session_maker() as session:
             for tx_addr_mapping in self.tx_addr_mapping:
                 if (
-                tx_addr_tuple := (tx_addr_mapping.transaction_id, tx_addr_mapping.address)) not in self.tx_addr_cache:
+                    tx_addr_tuple := (
+                        tx_addr_mapping.transaction_id,
+                        tx_addr_mapping.address,
+                    )
+                ) not in self.tx_addr_cache:
                     session.add(tx_addr_mapping)
                     cnt += 1
                     self.tx_addr_cache.append(tx_addr_tuple)
 
+                # Add to pending addresses to find balance
+                if tx_addr_mapping.address != None:
+                    addresses_to_find_balance.add(tx_addr_mapping.address)
+
+            # Upsert address balance rows to db
+            address_balance_rows = await self.__get_balances_for_addresses(
+                list(addresses_to_find_balance)
+            )
+            for i in address_balance_rows:
+                session.merge(i)
+
             try:
                 session.commit()
-                _logger.info(f'Added {cnt} tx-address mapping items successfully')
+                _logger.info(f"Added {cnt} tx-address mapping items successfully")
+                _logger.info(
+                    f"Added {len(address_balance_rows)} address balances successfully"
+                )
             except IntegrityError:
+                _logger.info(f"Encountered commit issue, rolling back")
                 session.rollback()
                 _logger.debug("add tx-addr mapping step by step.")
                 for tx_addr_mapping in self.tx_addr_mapping:
@@ -209,7 +279,7 @@ class BlocksProcessor(object):
                         session.rollback()
 
         self.tx_addr_mapping = []
-        self.tx_addr_cache = self.tx_addr_cache[-100:]
+        self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
 
     async def commit_txs(self):
         """
