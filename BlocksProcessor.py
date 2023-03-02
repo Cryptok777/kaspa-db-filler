@@ -231,7 +231,6 @@ class BlocksProcessor(object):
         return [
             AddressBalance(address=i["address"], balance=int(i.get("balance", 0)))
             for i in resp["getBalancesByAddressesResponse"]["entries"]
-            if int(i.get("balance", 0)) > 0
         ]
 
     async def add_and_commit_tx_addr_mapping(self):
