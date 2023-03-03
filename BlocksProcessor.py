@@ -253,19 +253,9 @@ class BlocksProcessor(object):
                 if tx_addr_mapping.address != None:
                     addresses_to_find_balance.add(tx_addr_mapping.address)
 
-            # Upsert address balance rows to db
-            address_balance_rows = await self.__get_balances_for_addresses(
-                list(addresses_to_find_balance)
-            )
-            for i in address_balance_rows:
-                session.merge(i)
-
             try:
                 session.commit()
                 _logger.info(f"Added {cnt} tx-address mapping items successfully")
-                _logger.info(
-                    f"Added {len(address_balance_rows)} address balances successfully"
-                )
             except IntegrityError:
                 _logger.info(f"Encountered commit issue, rolling back")
                 session.rollback()
@@ -276,6 +266,22 @@ class BlocksProcessor(object):
                         session.commit()
                     except IntegrityError:
                         session.rollback()
+
+            # Upsert address balance rows to db
+            address_balance_rows = await self.__get_balances_for_addresses(
+                list(addresses_to_find_balance)
+            )
+            try:
+                for i in address_balance_rows:
+                    session.merge(i)
+                session.commit()
+
+                _logger.info(
+                    f"Added {len(address_balance_rows)} address balances successfully"
+                )
+            except:
+                _logger.info(f"Encountered errors when upserting address balance")
+
 
         self.tx_addr_mapping = []
         self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
