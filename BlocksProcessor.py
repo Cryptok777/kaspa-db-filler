@@ -17,7 +17,7 @@ from utils.Event import Event
 
 _logger = logging.getLogger(__name__)
 
-CLUSTER_SIZE_INITIAL = 150
+CLUSTER_SIZE_INITIAL = 1500
 CLUSTER_SIZE_SYNCED = 20
 CLUSTER_WAIT_SECONDS = 4
 
@@ -282,7 +282,6 @@ class BlocksProcessor(object):
             except:
                 _logger.info(f"Encountered errors when upserting address balance")
 
-
         self.tx_addr_mapping = []
         self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
 
@@ -300,32 +299,32 @@ class BlocksProcessor(object):
                 .all()
             )
             for tx_item in tx_items:
-                tx_item.block_hash = list(
-                    (
-                        set(tx_item.block_hash)
-                        | set(self.txs[tx_item.transaction_id].block_hash)
-                    )
-                )
+                # tx_item.block_hash = list(
+                #     (
+                #         set(tx_item.block_hash)
+                #         | set(self.txs[tx_item.transaction_id].block_hash)
+                #     )
+                # )
                 self.txs.pop(tx_item.transaction_id)
 
-            session.commit()
+            # session.commit()
 
         # Go through all transactions which were not in the database and add now.
         with session_maker() as session:
             # go through queues and add
-            for _ in self.txs.values():
-                session.add(_)
+            # for _ in self.txs.values():
+            #     session.add(_)
 
-            for tx_output in self.txs_output:
-                if tx_output.transaction_id in self.txs:
-                    session.add(tx_output)
+            # for tx_output in self.txs_output:
+            #     if tx_output.transaction_id in self.txs:
+            #         session.add(tx_output)
 
-            for tx_input in self.txs_input:
-                if tx_input.transaction_id in self.txs:
-                    session.add(tx_input)
+            # for tx_input in self.txs_input:
+            #     if tx_input.transaction_id in self.txs:
+            #         session.add(tx_input)
 
             try:
-                session.commit()
+                # session.commit()
                 _logger.debug(f"Added {len(self.txs)} TXs to database")
 
                 # reset queues
@@ -375,20 +374,21 @@ class BlocksProcessor(object):
         Insert queued blocks to database
         """
         # delete already set old blocks
-        with session_maker() as session:
-            d = (
-                session.query(Block)
-                .filter(Block.hash.in_([b.hash for b in self.blocks_to_add]))
-                .delete()
-            )
-            session.commit()
+        # with session_maker() as session:
+        #     d = (
+        #         session.query(Block)
+        #         .filter(Block.hash.in_([b.hash for b in self.blocks_to_add]))
+        #         .delete()
+        #     )
+        #     session.commit()
 
         # insert blocks
         with session_maker() as session:
             for _ in self.blocks_to_add:
-                session.add(_)
+                pass
+                # session.add(_)
             try:
-                session.commit()
+                # session.commit()
                 _logger.debug(
                     f"Added {len(self.blocks_to_add)} blocks to database. "
                     f"Timestamp: {self.blocks_to_add[-1].timestamp}"
@@ -397,7 +397,7 @@ class BlocksProcessor(object):
                 # reset queue
                 self.blocks_to_add = []
             except IntegrityError:
-                session.rollback()
+                # session.rollback()
                 _logger.error("Error adding group of blocks")
                 raise
 

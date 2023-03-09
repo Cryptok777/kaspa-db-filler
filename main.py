@@ -9,6 +9,8 @@ from dbsession import create_all, session_maker
 from kaspad.KaspadMultiClient import KaspadMultiClient
 from models.Transaction import Transaction
 
+import requests
+
 load_dotenv(override=True)
 
 logging.basicConfig(
@@ -41,6 +43,7 @@ if not kaspad_hosts:
 client = KaspadMultiClient(kaspad_hosts)
 task_runner = None
 
+
 async def get_start_block_hash():
     with session_maker() as s:
         try:
@@ -54,23 +57,24 @@ async def get_start_block_hash():
             )
         except AttributeError:
             return None
-    
-    
+
+
+OFFSET = 0
+SIZE = 10000
+
+
 async def main():
     # initialize kaspads
     await client.initialize_all()
 
-    # find last acceptedTx's block hash, when restarting this tool
-    start_hash = await get_start_block_hash()
+    start_hash = "bec2aced8084807fa7097377703bd9ed750871499334821297903e18d0912969"
 
-    # if there is nothing in the db, just get latest block.
     if not start_hash:
         daginfo = await client.request("getBlockDagInfoRequest", {})
         start_hash = daginfo["getBlockDagInfoResponse"]["pruningPointHash"]
 
     _logger.info(f"Start hash: {start_hash}")
 
-    # create instances of blocksprocessor and virtualchainprocessor
     bp = BlocksProcessor(client)
     vcp = VirtualChainProcessor(client, start_hash)
 
@@ -87,7 +91,7 @@ async def main():
             _logger.debug("Checking exceptions in VCP")
             task_runner.result()
 
-        _logger.debug('Update is_accepted for TXs.')
+        _logger.debug("Update is_accepted for TXs.")
         task_runner = asyncio.create_task(vcp.update_accepted_info())
 
     # set up event to fire after adding new blocks
@@ -95,13 +99,8 @@ async def main():
 
     # start blocks processor working concurrent
     while True:
-        try:
-            await bp.loop(start_hash)
-        except Exception:
-            _logger.exception("Exception occured and script crashed. Restart in 1m")
-            bp.synced = False
-            await asyncio.sleep(60)
-            start_hash = await get_start_block_hash()
+        await handle_blocks_commited(None)
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":

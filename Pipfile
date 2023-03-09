@@ -9,6 +9,7 @@ psycopg2 = "*"
 grpcio = "*"
 grpcio-tools = "*"
 load_dotenv = "*"
+requests = "*"
 
 [dev-packages]
 black = "*"

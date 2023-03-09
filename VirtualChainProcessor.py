@@ -89,31 +89,31 @@ class VirtualChainProcessor(object):
 
                 _logger.info(f'Now set is_accepted=False for {rejected_tx_ids}.')
                 if rejected_tx_ids:
-                    s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids)) \
-                        .update({'is_accepted': False})
-                    s.commit()
+                    # s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids)) \
+                    #     .update({'is_accepted': False})
+                    # s.commit()
                     _logger.info('Set is_accepted=False done.')
 
             count_tx = 0
 
             # set is_accepted to True and add accepting_block_hash
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(Transaction).filter(
+                count = s.query(Transaction).filter(
                     Transaction.transaction_id.in_(accepted_tx_ids)
                 ).update(
                     {"is_accepted": True, "accepting_block_hash": accepting_block_hash}
                 )
-                count_tx += len(accepted_tx_ids)
+                count_tx += count
 
             _logger.debug(f"Set is_accepted=True for {count_tx} transactions.")
             s.commit()
 
             # set is_accepted in tx<->addr mapping table
-            for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids)) \
-                    .update({'is_accepted': True})
+            # for accepting_block_hash, accepted_tx_ids in accepted_ids:
+            #     s.query(TxAddrMapping).filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids)) \
+            #         .update({'is_accepted': True})
 
-            s.commit()
+            # s.commit()
 
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
