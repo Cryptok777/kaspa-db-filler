@@ -229,7 +229,11 @@ class BlocksProcessor(object):
         )
 
         return [
-            AddressBalance(address=i["address"], balance=int(i.get("balance", 0)))
+            AddressBalance(
+                address=i["address"],
+                balance=int(i.get("balance", 0)),
+                updated_at=datetime.now(),
+            )
             for i in resp["getBalancesByAddressesResponse"]["entries"]
         ]
 
