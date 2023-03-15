@@ -161,7 +161,8 @@ class VirtualChainProcessor(object):
             s.commit()
 
             # Update balance addresses
-            addresses_to_find_balance.remove(None)
+            if None in addresses_to_find_balance:
+                addresses_to_find_balance.remove(None)
             address_balance_rows = await self.__get_balances_for_addresses(
                 list(addresses_to_find_balance)
             )
