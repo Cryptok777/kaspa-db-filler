@@ -3,13 +3,10 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import List
 
-import sqlalchemy.exc
 from sqlalchemy.exc import IntegrityError
 
 from dbsession import session_maker
-from models.AddressBalance import AddressBalance
 from models.Block import Block
 from models.Transaction import Transaction, TransactionOutput, TransactionInput
 from models.TxAddrMapping import TxAddrMapping
@@ -221,25 +218,8 @@ class BlocksProcessor(object):
                     set(self.txs[tx_id].block_hash + [block_hash])
                 )
 
-    async def __get_balances_for_addresses(self, addresses: List[str]):
-        resp = await self.client.request(
-            "getBalancesByAddressesRequest",
-            params={"addresses": addresses},
-            timeout=60,
-        )
-
-        return [
-            AddressBalance(
-                address=i["address"],
-                balance=int(i.get("balance", 0)),
-                updated_at=datetime.now(),
-            )
-            for i in resp["getBalancesByAddressesResponse"]["entries"]
-        ]
-
     async def add_and_commit_tx_addr_mapping(self):
         cnt = 0
-        addresses_to_find_balance = set()
 
         with session_maker() as session:
             for tx_addr_mapping in self.tx_addr_mapping:
@@ -252,10 +232,6 @@ class BlocksProcessor(object):
                     session.add(tx_addr_mapping)
                     cnt += 1
                     self.tx_addr_cache.append(tx_addr_tuple)
-
-                # Add to pending addresses to find balance
-                if tx_addr_mapping.address != None:
-                    addresses_to_find_balance.add(tx_addr_mapping.address)
 
             try:
                 session.commit()
@@ -270,22 +246,6 @@ class BlocksProcessor(object):
                         session.commit()
                     except IntegrityError:
                         session.rollback()
-
-            # Upsert address balance rows to db
-            address_balance_rows = await self.__get_balances_for_addresses(
-                list(addresses_to_find_balance)
-            )
-            try:
-                for i in address_balance_rows:
-                    session.merge(i)
-                session.commit()
-
-                _logger.info(
-                    f"Added {len(address_balance_rows)} address balances successfully"
-                )
-            except:
-                _logger.info(f"Encountered errors when upserting address balance")
-
 
         self.tx_addr_mapping = []
         self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
