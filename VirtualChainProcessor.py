@@ -40,7 +40,7 @@ class VirtualChainProcessor(object):
                 balance=int(i.get("balance", 0)),
                 updated_at=datetime.now(),
             )
-            for i in resp["getBalancesByAddressesResponse"]["entries"]
+            for i in resp["getBalancesByAddressesResponse"].get("entries", [])
         ]
 
     async def __update_transactions_in_db(self):
