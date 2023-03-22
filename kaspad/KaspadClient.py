@@ -30,7 +30,12 @@ class KaspadClient(object):
             return False
 
     async def request(self, command, params=None, timeout=60, retry=0):
-        _logger.debug(f'Request start: {command}, {params}')
+        if command == 'getBalancesByAddressesRequest' and params:
+            address_length = len(params.get('addresses'))
+            _logger.debug(f'Request start: {command}, with address count: {address_length}')
+        else:
+            _logger.debug(f'Request start: {command}, {params}')
+
         for i in range(1 + retry):
             try:
                 with KaspadThread(self.kaspad_host, self.kaspad_port) as t:
