@@ -26,9 +26,6 @@ with tx_mapping AS (
   WHERE
     TRUE
     AND ti_input.script_public_key_address is not null
-    AND t.block_time >= 1678860545000 - 12 * 60 * 60 * 1e3
-    AND t.block_time <= 1678860545000 + 12 * 60 * 60 * 1e3
---     AND t.transaction_id = '2668510ce29f181c4db5e99ab5c6aa38ba9de3137a2a260d29acf61f46e72ecb'
   UNION ALL
   SELECT DISTINCT
     t.transaction_id,
@@ -41,13 +38,14 @@ with tx_mapping AS (
   WHERE
     TRUE
     AND t_out.script_public_key_address is not null
-    AND t.block_time >= 1678860545000 - 12 * 60 * 60 * 1e3
-    AND t.block_time <= 1678860545000 + 12 * 60 * 60 * 1e3
---     AND t.transaction_id = '2668510ce29f181c4db5e99ab5c6aa38ba9de3137a2a260d29acf61f46e72ecb'
 )
 
 INSERT INTO tx_id_address_mapping ( transaction_id, address, block_time, is_accepted )
 SELECT * FROM tx_mapping
+    WHERE TRUE
+    AND block_time >= 1678860545000 - 12 * 60 * 60 * 1e3
+    AND block_time <= 1678860545000 + 12 * 60 * 60 * 1e3
+    -- AND transaction_id = '2668510ce29f181c4db5e99ab5c6aa38ba9de3137a2a260d29acf61f46e72ecb'
 ON CONFLICT (transaction_id, address) DO NOTHING
 
 
