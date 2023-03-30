@@ -1,5 +1,4 @@
--- 1. Edit start_hash in main.py with stater block hash, run the script
--- 2. Edit the block time from sql, and then run this sql
+-- 1. Edit the block time from sql, and then run this sql
 
 
 -- Backfill tx_mapping table
@@ -43,8 +42,8 @@ with tx_mapping AS (
 INSERT INTO tx_id_address_mapping ( transaction_id, address, block_time, is_accepted )
 SELECT * FROM tx_mapping
     WHERE TRUE
-    AND block_time >= 1678860545000 - 12 * 60 * 60 * 1e3
-    AND block_time <= 1678860545000 + 12 * 60 * 60 * 1e3
+    AND block_time >= 1679729053956 - 1 * 60 * 1e3
+    AND block_time <= 1679729053956 + 1 * 60 * 1e3
     -- AND transaction_id = '2668510ce29f181c4db5e99ab5c6aa38ba9de3137a2a260d29acf61f46e72ecb'
 ON CONFLICT (transaction_id, address) DO NOTHING
 
