@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 
 from dbsession import session_maker
+from models.BlockPayload import BlockPayload
 from models.Block import Block
 from models.Transaction import Transaction, TransactionOutput, TransactionInput
 from models.TxAddrMapping import TxAddrMapping
@@ -27,6 +28,7 @@ class BlocksProcessor(object):
     def __init__(self, client):
         self.client = client
         self.blocks_to_add = []
+        self.block_payloads_to_add = []
         self.on_commited = Event()
 
         self.txs = {}
@@ -46,6 +48,7 @@ class BlocksProcessor(object):
             if block_hash is not None:
                 # prepare add block and tx to database
                 await self.__add_block_to_queue(block_hash, block)
+                await self.__add_block_payload_to_queue(block_hash, block)
                 await self.__add_tx_to_queue(block_hash, block)
 
             # if cluster size is reached, insert to database
@@ -56,6 +59,7 @@ class BlocksProcessor(object):
             # or we are waiting and cache is not empty
             if bcc or (block_hash is None and len(self.blocks_to_add) >= 1):
                 await self.commit_blocks()
+                await self.commit_block_payloads()
                 await self.commit_txs()
                 await self.add_and_commit_tx_addr_mapping()
                 await self.on_commited()
@@ -334,6 +338,27 @@ class BlocksProcessor(object):
         self.blocks_to_add = [b for b in self.blocks_to_add if b.hash != block_hash]
         self.blocks_to_add.append(block_entity)
 
+    async def __add_block_payload_to_queue(self, block_hash, block):
+        """
+        Adds a block to the queue, which is used for adding a cluster
+        """
+        txs = block["transactions"]
+        payload = txs[0].get("payload") if len(txs) > 0 else None
+
+        block = BlockPayload(
+            hash=block_hash,
+            payload=payload,
+            timestamp=datetime.fromtimestamp(
+                int(block["header"]["timestamp"]) / 1000
+            ).isoformat(),
+        )
+
+        # remove same block hash
+        self.block_payloads_to_add = [
+            b for b in self.block_payloads_to_add if b.hash != block_hash
+        ]
+        self.block_payloads_to_add.append(block)
+
     async def commit_blocks(self):
         """
         Insert queued blocks to database
@@ -363,6 +388,35 @@ class BlocksProcessor(object):
             except IntegrityError:
                 session.rollback()
                 _logger.error("Error adding group of blocks")
+                raise
+
+    async def commit_block_payloads(self):
+        """
+        Insert queued block payloads to database
+        """
+        # delete already set old blocks
+        with session_maker() as session:
+            session.query(BlockPayload).filter(
+                BlockPayload.hash.in_([b.hash for b in self.block_payloads_to_add])
+            ).delete()
+            session.commit()
+
+        # insert block payloads
+        with session_maker() as session:
+            for _ in self.block_payloads_to_add:
+                session.add(_)
+            try:
+                session.commit()
+                _logger.debug(
+                    f"Added {len(self.block_payloads_to_add)} block payloads to database. "
+                    f"Timestamp: {self.block_payloads_to_add[-1].timestamp}"
+                )
+
+                # reset queue
+                self.block_payloads_to_add = []
+            except IntegrityError:
+                session.rollback()
+                _logger.error("Error adding group of block payloads")
                 raise
 
     def is_tx_id_in_queue(self, tx_id):
