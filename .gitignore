@@ -130,4 +130,3 @@ dmypy.json
 .pyre/
 .vscode/settings.json
 .env.prod
-.env.local
