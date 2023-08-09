@@ -6,9 +6,9 @@ name = "pypi"
 [packages]
 sqlalchemy = "*"
 psycopg2 = "*"
-grpcio = "*"
-grpcio-tools = "*"
 load_dotenv = "*"
+plyvel = "*"
+tqdm = "*"
 
 [dev-packages]
 black = "*"
