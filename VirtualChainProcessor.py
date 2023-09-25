@@ -123,11 +123,11 @@ class VirtualChainProcessor(object):
                     _logger.info("Set is_accepted=False done.")
 
                     # Find addresses to update balance
-                    addrs = (
-                        s.query(TxAddrMapping.address)
-                        .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
-                        .all()
-                    )
+                    # addrs = (
+                    #     s.query(TxAddrMapping.address)
+                    #     .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
+                    #     .all()
+                    # )
                     # addresses_to_find_balance.update([i[0] for i in addrs])
 
             count_tx = 0
@@ -141,9 +141,10 @@ class VirtualChainProcessor(object):
                 )
                 count_tx += len(accepted_tx_ids)
 
-            _logger.debug(f"Set is_accepted=True for {count_tx} transactions.")
             s.commit()
-
+            _logger.debug(f"Done: set is_accepted=True for {count_tx} transactions.")
+            
+            _logger.debug(f"Start: set is_accepted=True for {count_tx} tx_mapping")
             # set is_accepted in tx<->addr mapping table
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
                 s.query(TxAddrMapping).filter(
@@ -151,14 +152,15 @@ class VirtualChainProcessor(object):
                 ).update({"is_accepted": True})
 
                 # Find addresses to update balance
-                addrs = (
-                    s.query(TxAddrMapping.address)
-                    .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
-                    .all()
-                )
+                # addrs = (
+                #     s.query(TxAddrMapping.address)
+                #     .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
+                #     .all()
+                # )
                 # addresses_to_find_balance.update([i[0] for i in addrs])
 
             s.commit()
+            _logger.debug(f"Done: set is_accepted=True for {count_tx} tx_mapping")
 
             # Update balance addresses
             # if None in addresses_to_find_balance:
