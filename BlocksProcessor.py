@@ -33,7 +33,7 @@ class BlocksProcessor(object):
         self.txs = {}
         self.txs_output = []
         self.txs_input = []
-        self.tx_addr_mapping = []
+        # self.tx_addr_mapping = []
 
         # Did the loop already see the DAG tip
         self.synced = False
@@ -55,7 +55,7 @@ class BlocksProcessor(object):
             if bcc or (block_hash is None and len(self.blocks_to_add) >= 1):
                 await self.commit_blocks()
                 await self.commit_txs()
-                await self.add_and_commit_tx_addr_mapping()
+                # await self.add_and_commit_tx_addr_mapping()
                 # await self.on_commited()
 
     async def blockiter(self, start_point):
@@ -155,14 +155,14 @@ class BlocksProcessor(object):
                         )
                     )
 
-                    self.tx_addr_mapping.append(
-                        TxAddrMapping(
-                            transaction_id=transaction["verboseData"]["transactionId"],
-                            address=out["verboseData"]["scriptPublicKeyAddress"],
-                            block_time=int(transaction["verboseData"]["blockTime"]),
-                            is_accepted=False,
-                        )
-                    )
+                    # self.tx_addr_mapping.append(
+                    #     TxAddrMapping(
+                    #         transaction_id=transaction["verboseData"]["transactionId"],
+                    #         address=out["verboseData"]["scriptPublicKeyAddress"],
+                    #         block_time=int(transaction["verboseData"]["blockTime"]),
+                    #         is_accepted=False,
+                    #     )
+                    # )
 
                 # Add transactions input
                 for index, tx_in in enumerate(transaction.get("inputs", [])):
@@ -202,41 +202,41 @@ class BlocksProcessor(object):
                         #         f" ({tx_in['previousOutpoint'].get('index', 0)})"
                         #     )
 
-                    self.tx_addr_mapping.append(
-                        TxAddrMapping(
-                            transaction_id=transaction["verboseData"]["transactionId"],
-                            address=inp_address,
-                            block_time=int(transaction["verboseData"]["blockTime"]),
-                            is_accepted=False,
-                        )
-                    )
+                    # self.tx_addr_mapping.append(
+                    #     TxAddrMapping(
+                    #         transaction_id=transaction["verboseData"]["transactionId"],
+                    #         address=inp_address,
+                    #         block_time=int(transaction["verboseData"]["blockTime"]),
+                    #         is_accepted=False,
+                    #     )
+                    # )
             else:
                 # If the block is already in the Queue, merge the block_hashes.
                 self.txs[tx_id].block_hash = list(
                     set(self.txs[tx_id].block_hash + [block_hash])
                 )
 
-    async def add_and_commit_tx_addr_mapping(self):
-        import insert_ignore
+    # async def add_and_commit_tx_addr_mapping(self):
+    #     import insert_ignore
 
-        with session_maker() as session:
-            session.bulk_save_objects(self.tx_addr_mapping)
+    #     with session_maker() as session:
+    #         session.bulk_save_objects(self.tx_addr_mapping)
 
-            try:
-                session.commit()
-                _logger.info(f"Added {len(self.tx_addr_mapping)} tx-address mapping items successfully")
-            except:
-                _logger.info(f"Encountered commit issue, rolling back")
-                session.rollback()
-                _logger.debug("add tx-addr mapping step by step.")
-                for tx_addr_mapping in self.tx_addr_mapping:
-                    session.add(tx_addr_mapping)
-                    try:
-                        session.commit()
-                    except IntegrityError:
-                        session.rollback()
+    #         try:
+    #             session.commit()
+    #             _logger.info(f"Added {len(self.tx_addr_mapping)} tx-address mapping items successfully")
+    #         except:
+    #             _logger.info(f"Encountered commit issue, rolling back")
+    #             session.rollback()
+    #             _logger.debug("add tx-addr mapping step by step.")
+    #             for tx_addr_mapping in self.tx_addr_mapping:
+    #                 session.add(tx_addr_mapping)
+    #                 try:
+    #                     session.commit()
+    #                 except IntegrityError:
+    #                     session.rollback()
 
-        self.tx_addr_mapping = []
+    #     self.tx_addr_mapping = []
 
     async def commit_txs(self):
         """
