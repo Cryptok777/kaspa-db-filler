@@ -50,7 +50,7 @@ class VirtualChainProcessor(object):
         accepted_ids = []
         rejected_blocks = []
         last_known_chain_block = None
-        addresses_to_find_balance = set()
+        # addresses_to_find_balance = set()
 
         if self.virtual_chain_response is None:
             return
@@ -99,12 +99,12 @@ class VirtualChainProcessor(object):
             if rejected_blocks:
                 _logger.debug(f"Found rejected blocks: {rejected_blocks}")
 
-                rejected_tx_ids = [
-                    x[0]
-                    for x in s.query(Transaction.transaction_id)
-                    .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
-                    .all()
-                ]
+                # rejected_tx_ids = [
+                #     x[0]
+                #     for x in s.query(Transaction.transaction_id)
+                #     .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
+                #     .all()
+                # ]
                 count = (
                     s.query(Transaction)
                     .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
@@ -114,13 +114,13 @@ class VirtualChainProcessor(object):
                 _logger.info(f"Set is_accepted=False for {count} TXs")
                 s.commit()
 
-                _logger.info(f"Now set is_accepted=False for {rejected_tx_ids}.")
-                if rejected_tx_ids:
-                    s.query(TxAddrMapping).filter(
-                        TxAddrMapping.transaction_id.in_(rejected_tx_ids)
-                    ).update({"is_accepted": False})
-                    s.commit()
-                    _logger.info("Set is_accepted=False done.")
+                # _logger.info(f"Now set is_accepted=False for {rejected_tx_ids}.")
+                # if rejected_tx_ids:
+                #     s.query(TxAddrMapping).filter(
+                #         TxAddrMapping.transaction_id.in_(rejected_tx_ids)
+                #     ).update({"is_accepted": False})
+                #     s.commit()
+                #     _logger.info("Set is_accepted=False done.")
 
                     # Find addresses to update balance
                     # addrs = (
@@ -144,12 +144,12 @@ class VirtualChainProcessor(object):
             s.commit()
             _logger.debug(f"Done: set is_accepted=True for {count_tx} transactions.")
             
-            _logger.debug(f"Start: set is_accepted=True for {count_tx} tx_mapping")
-            # set is_accepted in tx<->addr mapping table
-            for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(TxAddrMapping).filter(
-                    TxAddrMapping.transaction_id.in_(accepted_tx_ids)
-                ).update({"is_accepted": True})
+            # _logger.debug(f"Start: set is_accepted=True for {count_tx} tx_mapping")
+            # # set is_accepted in tx<->addr mapping table
+            # for accepting_block_hash, accepted_tx_ids in accepted_ids:
+            #     s.query(TxAddrMapping).filter(
+            #         TxAddrMapping.transaction_id.in_(accepted_tx_ids)
+            #     ).update({"is_accepted": True})
 
                 # Find addresses to update balance
                 # addrs = (
@@ -159,8 +159,8 @@ class VirtualChainProcessor(object):
                 # )
                 # addresses_to_find_balance.update([i[0] for i in addrs])
 
-            s.commit()
-            _logger.debug(f"Done: set is_accepted=True for {count_tx} tx_mapping")
+            # s.commit()
+            # _logger.debug(f"Done: set is_accepted=True for {count_tx} tx_mapping")
 
             # Update balance addresses
             # if None in addresses_to_find_balance:
