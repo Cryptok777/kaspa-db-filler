@@ -35,9 +35,6 @@ class BlocksProcessor(object):
         self.txs_input = []
         self.tx_addr_mapping = []
 
-        # cache for checking already added tx mapping
-        self.tx_addr_cache = []
-
         # Did the loop already see the DAG tip
         self.synced = False
 
@@ -199,11 +196,11 @@ class BlocksProcessor(object):
                             ):
                                 inp_address = output.script_public_key_address
                                 break
-                        else:
-                            _logger.warning(
-                                f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
-                                f" ({tx_in['previousOutpoint'].get('index', 0)})"
-                            )
+                        # else:
+                        #     _logger.warning(
+                        #         f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
+                        #         f" ({tx_in['previousOutpoint'].get('index', 0)})"
+                        #     )
 
                     self.tx_addr_mapping.append(
                         TxAddrMapping(
@@ -220,24 +217,15 @@ class BlocksProcessor(object):
                 )
 
     async def add_and_commit_tx_addr_mapping(self):
-        cnt = 0
+        import insert_ignore
 
         with session_maker() as session:
-            for tx_addr_mapping in self.tx_addr_mapping:
-                if (
-                    tx_addr_tuple := (
-                        tx_addr_mapping.transaction_id,
-                        tx_addr_mapping.address,
-                    )
-                ) not in self.tx_addr_cache:
-                    session.add(tx_addr_mapping)
-                    cnt += 1
-                    self.tx_addr_cache.append(tx_addr_tuple)
+            session.bulk_save_objects(self.tx_addr_mapping)
 
             try:
                 session.commit()
-                _logger.info(f"Added {cnt} tx-address mapping items successfully")
-            except IntegrityError:
+                _logger.info(f"Added {len(self.tx_addr_mapping)} tx-address mapping items successfully")
+            except:
                 _logger.info(f"Encountered commit issue, rolling back")
                 session.rollback()
                 _logger.debug("add tx-addr mapping step by step.")
@@ -249,7 +237,6 @@ class BlocksProcessor(object):
                         session.rollback()
 
         self.tx_addr_mapping = []
-        self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
 
     async def commit_txs(self):
         """
