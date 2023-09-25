@@ -42,6 +42,7 @@ client = KaspadMultiClient(kaspad_hosts)
 task_runner = None
 
 async def get_start_block_hash():
+    return '190d8ab362c7160d3a96becbd9bff08a5b117c7ef4248a54e806b5be8290830c'
     with session_maker() as s:
         try:
             return (
