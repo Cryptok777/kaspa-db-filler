@@ -56,7 +56,7 @@ class BlocksProcessor(object):
                 await self.commit_blocks()
                 await self.commit_txs()
                 await self.add_and_commit_tx_addr_mapping()
-                await self.on_commited()
+                # await self.on_commited()
 
     async def blockiter(self, start_point):
         """
