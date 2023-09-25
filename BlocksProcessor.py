@@ -242,6 +242,8 @@ class BlocksProcessor(object):
         """
         Add all queued transactions and it's in- and outputs to database
         """
+        import insert_ignore
+
         # First go through all transactions and check, if there are already added ones.
         # If yes, update block_hash and remove from queue
         tx_ids_to_add = list(self.txs.keys())
@@ -265,16 +267,19 @@ class BlocksProcessor(object):
         # Go through all transactions which were not in the database and add now.
         with session_maker() as session:
             # go through queues and add
-            for _ in self.txs.values():
-                session.add(_)
+            session.bulk_save_objects(self.txs.values())
 
+            pending_out = []
             for tx_output in self.txs_output:
                 if tx_output.transaction_id in self.txs:
-                    session.add(tx_output)
+                    pending_out.append(tx_output)
+            session.bulk_save_objects(pending_out)
 
+            pending_in = []
             for tx_input in self.txs_input:
                 if tx_input.transaction_id in self.txs:
-                    session.add(tx_input)
+                    pending_in.append(tx_input)
+            session.bulk_save_objects(pending_in)
 
             try:
                 session.commit()
@@ -326,6 +331,8 @@ class BlocksProcessor(object):
         """
         Insert queued blocks to database
         """
+        import insert_ignore
+
         # delete already set old blocks
         with session_maker() as session:
             d = (
@@ -337,9 +344,8 @@ class BlocksProcessor(object):
 
         # insert blocks
         with session_maker() as session:
-            for _ in self.blocks_to_add:
-                session.add(_)
             try:
+                session.bulk_save_objects(self.blocks_to_add)
                 session.commit()
                 _logger.debug(
                     f"Added {len(self.blocks_to_add)} blocks to database. "
