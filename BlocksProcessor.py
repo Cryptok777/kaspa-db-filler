@@ -220,33 +220,24 @@ class BlocksProcessor(object):
                 )
 
     async def add_and_commit_tx_addr_mapping(self):
-        cnt = 0
+        # import insert_ignore
 
-        with session_maker() as session:
-            for tx_addr_mapping in self.tx_addr_mapping:
-                if (
-                    tx_addr_tuple := (
-                        tx_addr_mapping.transaction_id,
-                        tx_addr_mapping.address,
-                    )
-                ) not in self.tx_addr_cache:
-                    session.add(tx_addr_mapping)
-                    cnt += 1
-                    self.tx_addr_cache.append(tx_addr_tuple)
+        # with session_maker() as session:
+        #     session.bulk_save_objects(self.tx_addr_mapping)
 
-            try:
-                session.commit()
-                _logger.info(f"Added {cnt} tx-address mapping items successfully")
-            except IntegrityError:
-                _logger.info(f"Encountered commit issue, rolling back")
-                session.rollback()
-                _logger.debug("add tx-addr mapping step by step.")
-                for tx_addr_mapping in self.tx_addr_mapping:
-                    session.add(tx_addr_mapping)
-                    try:
-                        session.commit()
-                    except IntegrityError:
-                        session.rollback()
+        #     try:
+        #         session.commit()
+        #         _logger.info(f"Added {len(self.tx_addr_mapping)} tx-address mapping items successfully")
+        #     except:
+        #         _logger.info(f"Encountered commit issue, rolling back")
+        #         session.rollback()
+        #         _logger.debug("add tx-addr mapping step by step.")
+        #         for tx_addr_mapping in self.tx_addr_mapping:
+        #             session.add(tx_addr_mapping)
+        #             try:
+        #                 session.commit()
+        #             except IntegrityError:
+        #                 session.rollback()
 
         self.tx_addr_mapping = []
         self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items

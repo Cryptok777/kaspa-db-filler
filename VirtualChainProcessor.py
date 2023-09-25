@@ -128,7 +128,7 @@ class VirtualChainProcessor(object):
                         .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
                         .all()
                     )
-                    addresses_to_find_balance.update([i[0] for i in addrs])
+                    # addresses_to_find_balance.update([i[0] for i in addrs])
 
             count_tx = 0
 
@@ -156,24 +156,34 @@ class VirtualChainProcessor(object):
                     .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
                     .all()
                 )
-                addresses_to_find_balance.update([i[0] for i in addrs])
+                # addresses_to_find_balance.update([i[0] for i in addrs])
 
             s.commit()
 
-            # Update balance addresses
-            if None in addresses_to_find_balance:
-                addresses_to_find_balance.remove(None)
-            address_balance_rows = await self.__get_balances_for_addresses(
-                list(addresses_to_find_balance)
-            )
-            try:
-                for i in address_balance_rows:
-                    s.merge(i)
-                s.commit()
+            # Remove None addresses
+            # if None in addresses_to_find_balance:
+            #     addresses_to_find_balance.remove(None)
 
-                _logger.info(f"Updated {len(address_balance_rows)} address balances")
-            except:
-                _logger.info(f"Encountered errors when upserting address balance")
+            # # Convert to list
+            # addresses_to_find_balance = list(addresses_to_find_balance)
+
+            # # Update balance addresses in batch
+            # BATCH_SIZE = 1000
+            # for i in range(0, len(addresses_to_find_balance), BATCH_SIZE):
+            #     current_batch = addresses_to_find_balance[i : i + BATCH_SIZE]
+
+            #     address_balance_rows = await self.__get_balances_for_addresses(
+            #         current_batch
+            #     )
+            #     try:
+            #         for i in address_balance_rows:
+            #             s.merge(i)
+            #         s.commit()
+            #     except:
+            #         _logger.info(f"Encountered errors when upserting address balance")
+            # _logger.info(
+            #     f"Updated {len(addresses_to_find_balance)} address balances"
+            # )
 
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
