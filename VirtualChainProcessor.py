@@ -191,7 +191,7 @@ class VirtualChainProcessor(object):
         resp = await self.client.request(
             "getVirtualSelectedParentChainFromBlockRequest",
             {"startHash": self.start_point, "includeAcceptedTransactionIds": True},
-            timeout=120,
+            timeout=240,
         )
 
         # if there is a response, add to queue and set new startpoint

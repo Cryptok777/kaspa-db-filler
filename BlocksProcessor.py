@@ -71,8 +71,9 @@ class BlocksProcessor(object):
                     "includeTransactions": True,
                     "includeBlocks": True,
                 },
-                timeout=60,
+                timeout=120,
             )
+            _logger.info(f'Got blocks {len(resp["getBlocksResponse"].get("blockHashes", []))}', )
 
             # if it's not synced, get the tiphash, which has to be found for getting synced
             if not self.synced:
@@ -96,7 +97,7 @@ class BlocksProcessor(object):
             if len(resp["getBlocksResponse"].get("blockHashes", [])) > 1:
                 low_hash = resp["getBlocksResponse"]["blockHashes"][-1]
             else:
-                _logger.debug("")
+                _logger.debug("No more blocks found. Waiting for new blocks.")
                 await asyncio.sleep(2)
 
             # if synced, poll blocks after 1s
@@ -181,21 +182,21 @@ class BlocksProcessor(object):
                         )
                     )
 
-                    inp_address = self.__get_address_from_tx_outputs(
-                        tx_in["previousOutpoint"]["transactionId"],
-                        tx_in["previousOutpoint"].get("index", 0),
-                    )
+                    # inp_address = self.__get_address_from_tx_outputs(
+                    #     tx_in["previousOutpoint"]["transactionId"],
+                    #     tx_in["previousOutpoint"].get("index", 0),
+                    # )
 
-                    # if tx is in the output cache and not in DB yet
-                    if inp_address is None:
-                        for output in self.txs_output:
-                            if output.transaction_id == tx_in["previousOutpoint"][
-                                "transactionId"
-                            ] and output.index == tx_in["previousOutpoint"].get(
-                                "index", 0
-                            ):
-                                inp_address = output.script_public_key_address
-                                break
+                    # # if tx is in the output cache and not in DB yet
+                    # if inp_address is None:
+                    #     for output in self.txs_output:
+                    #         if output.transaction_id == tx_in["previousOutpoint"][
+                    #             "transactionId"
+                    #         ] and output.index == tx_in["previousOutpoint"].get(
+                    #             "index", 0
+                    #         ):
+                    #             inp_address = output.script_public_key_address
+                    #             break
                         # else:
                         #     _logger.warning(
                         #         f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
@@ -244,6 +245,7 @@ class BlocksProcessor(object):
         """
         import insert_ignore
 
+        _logger.debug(f"Committing {len(self.txs)} TXs to database")
         # First go through all transactions and check, if there are already added ones.
         # If yes, update block_hash and remove from queue
         tx_ids_to_add = list(self.txs.keys())
@@ -331,6 +333,7 @@ class BlocksProcessor(object):
         """
         Insert queued blocks to database
         """
+        _logger.debug(f"Committing {len(self.blocks_to_add)} blocks to database")
         import insert_ignore
 
         # delete already set old blocks
