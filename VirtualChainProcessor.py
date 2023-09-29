@@ -1,6 +1,6 @@
 # encoding: utf-8
 
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import List
 
@@ -38,7 +38,7 @@ class VirtualChainProcessor(object):
             AddressBalance(
                 address=i["address"],
                 balance=int(i.get("balance", 0)),
-                updated_at=datetime.now(),
+                updated_at=datetime.now(timezone.utc),
             )
             for i in resp["getBalancesByAddressesResponse"].get("entries", [])
         ]
@@ -84,7 +84,7 @@ class VirtualChainProcessor(object):
             accepted_ids.append(
                 (
                     tx_accept_dict["acceptingBlockHash"],
-                    tx_accept_dict["acceptedTransactionIds"],
+                    tx_accept_dict.get("acceptedTransactionIds", []),
                 )
             )
 
@@ -99,12 +99,12 @@ class VirtualChainProcessor(object):
             if rejected_blocks:
                 _logger.debug(f"Found rejected blocks: {rejected_blocks}")
 
-                # rejected_tx_ids = [
-                #     x[0]
-                #     for x in s.query(Transaction.transaction_id)
-                #     .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
-                #     .all()
-                # ]
+                rejected_tx_ids = [
+                    x[0]
+                    for x in s.query(Transaction.transaction_id)
+                    .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
+                    .all()
+                ]
                 count = (
                     s.query(Transaction)
                     .filter(Transaction.accepting_block_hash.in_(rejected_blocks))
@@ -115,18 +115,20 @@ class VirtualChainProcessor(object):
                 s.commit()
 
                 # _logger.info(f"Now gather is_accepted=False tx to update balance")
-                # if rejected_tx_ids:
-                #     addrs = (
-                #         s.query(TxAddrMapping.address)
-                #         .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
-                #         .all()
-                #     )
-                #     addresses_to_find_balance.update([i[0] for i in addrs])
+                if rejected_tx_ids:
+                    addrs = (
+                        s.query(TxAddrMapping.address)
+                        .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
+                        .all()
+                    )
+                    addresses_to_find_balance.update([i[0] for i in addrs])
 
             count_tx = 0
 
             # set is_accepted to True and add accepting_block_hash
-            _logger.debug(f"START: Set is_accepted=True for {count_tx} transactions.")
+            _logger.debug(
+                f"START: Set is_accepted=True for {len(accepted_ids)} transactions."
+            )
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
                 s.query(Transaction).filter(
                     Transaction.transaction_id.in_(accepted_tx_ids)
@@ -135,24 +137,26 @@ class VirtualChainProcessor(object):
                 )
                 count_tx += len(accepted_tx_ids)
 
-            _logger.debug(f"DONE: Set is_accepted=True for {count_tx} transactions.")
+            _logger.debug(
+                f"DONE: Set is_accepted=True for {len(accepted_ids)} transactions."
+            )
             s.commit()
 
             # _logger.info(f"Now gather is_accepted=True tx to update balance")
-            # for accepting_block_hash, accepted_tx_ids in accepted_ids:
-            #     # Find addresses to update balance
-            #     addrs = (
-            #         s.query(TxAddrMapping.address)
-            #         .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
-            #         .all()
-            #     )
-            #     addresses_to_find_balance.update([i[0] for i in addrs])
+            for accepting_block_hash, accepted_tx_ids in accepted_ids:
+                # Find addresses to update balance
+                addrs = (
+                    s.query(TxAddrMapping.address)
+                    .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
+                    .all()
+                )
+                addresses_to_find_balance.update([i[0] for i in addrs])
 
-            # # Update balance addresses
-            # if None in addresses_to_find_balance:
-            #     addresses_to_find_balance.remove(None)
+            # Update balance addresses
+            if None in addresses_to_find_balance:
+                addresses_to_find_balance.remove(None)
 
-            # await self.update_address_balances(list(addresses_to_find_balance))
+            await self.update_address_balances(list(addresses_to_find_balance))
 
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
@@ -167,19 +171,22 @@ class VirtualChainProcessor(object):
         """
         # Do it in batches of 1000
         BATCH_SIZE = 1000
+        _logger.info(f"START: Update {len(addresses)} address balances")
+
         for i in range(0, len(addresses), BATCH_SIZE):
-            address_balance_rows = await self.__get_balances_for_addresses(addresses)
+            address_balance_rows = await self.__get_balances_for_addresses(
+                addresses[i : i + BATCH_SIZE]
+            )
             with session_maker() as s:
                 try:
-                    for i in address_balance_rows:
-                        s.merge(i)
+                    s.bulk_save_objects(address_balance_rows)
                     s.commit()
-
+                except Exception as e:
                     _logger.info(
-                        f"Updated {len(address_balance_rows)} address balances"
+                        f"Encountered errors when upserting address balance, error:", e
                     )
-                except:
-                    _logger.info(f"Encountered errors when upserting address balance")
+
+        _logger.info(f"FINISH: Update {len(addresses)} address balances")
 
     async def update_accepted_info(self):
         """

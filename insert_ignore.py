@@ -1,6 +1,6 @@
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Insert
-from models import Transaction
+from models.AddressBalance import AddressBalance
 from models.Transaction import TransactionInput, TransactionOutput, Transaction
 from models.TxAddrMapping import TxAddrMapping
 
@@ -32,15 +32,15 @@ def postgresql_on_conflict_do_nothing(insert, compiler, **kw):
         return statement + " ON CONFLICT DO NOTHING"
 
 
-# @compiles(Insert, "postgresql")
-# def postgresql_on_conflict_do_update(insert, compiler, **kw):
-#     statement = compiler.visit_insert(insert, **kw)
+@compiles(Insert, "postgresql")
+def postgresql_on_conflict_do_update(insert, compiler, **kw):
+    statement = compiler.visit_insert(insert, **kw)
 
-#     if insert.table.name not in [
-#         Transaction.__tablename__,
-#     ]:
-#         return statement
+    if insert.table.name not in [
+        AddressBalance.__tablename__,
+    ]:
+        return statement
 
-#     on_conflict_statement = f"ON CONFLICT (transaction_id) DO UPDATE SET (is_accepted, accepting_block_hash) = (EXCLUDED.is_accepted, EXCLUDED.accepting_block_hash)"
+    on_conflict_statement = f" ON CONFLICT (address) DO UPDATE SET (balance, updated_at) = (EXCLUDED.balance, EXCLUDED.updated_at)"
 
-#     return statement + on_conflict_statement
+    return statement + on_conflict_statement
