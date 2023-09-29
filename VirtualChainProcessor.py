@@ -114,15 +114,8 @@ class VirtualChainProcessor(object):
                 _logger.info(f"Set is_accepted=False for {count} TXs")
                 s.commit()
 
-                _logger.info(f"Now set is_accepted=False for {rejected_tx_ids}.")
+                _logger.info(f"Now gather is_accepted=False tx to update balance")
                 if rejected_tx_ids:
-                    s.query(TxAddrMapping).filter(
-                        TxAddrMapping.transaction_id.in_(rejected_tx_ids)
-                    ).update({"is_accepted": False})
-                    s.commit()
-                    _logger.info("Set is_accepted=False done.")
-
-                    # Find addresses to update balance
                     addrs = (
                         s.query(TxAddrMapping.address)
                         .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
@@ -133,6 +126,7 @@ class VirtualChainProcessor(object):
             count_tx = 0
 
             # set is_accepted to True and add accepting_block_hash
+            _logger.debug(f"START: Set is_accepted=True for {count_tx} transactions.")
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
                 s.query(Transaction).filter(
                     Transaction.transaction_id.in_(accepted_tx_ids)
@@ -141,15 +135,11 @@ class VirtualChainProcessor(object):
                 )
                 count_tx += len(accepted_tx_ids)
 
-            _logger.debug(f"Set is_accepted=True for {count_tx} transactions.")
+            _logger.debug(f"DONE: Set is_accepted=True for {count_tx} transactions.")
             s.commit()
 
-            # set is_accepted in tx<->addr mapping table
+            _logger.info(f"Now gather is_accepted=True tx to update balance")
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(TxAddrMapping).filter(
-                    TxAddrMapping.transaction_id.in_(accepted_tx_ids)
-                ).update({"is_accepted": True})
-
                 # Find addresses to update balance
                 addrs = (
                     s.query(TxAddrMapping.address)
@@ -158,22 +148,11 @@ class VirtualChainProcessor(object):
                 )
                 addresses_to_find_balance.update([i[0] for i in addrs])
 
-            s.commit()
-
             # Update balance addresses
             if None in addresses_to_find_balance:
                 addresses_to_find_balance.remove(None)
-            address_balance_rows = await self.__get_balances_for_addresses(
-                list(addresses_to_find_balance)
-            )
-            try:
-                for i in address_balance_rows:
-                    s.merge(i)
-                s.commit()
 
-                _logger.info(f"Updated {len(address_balance_rows)} address balances")
-            except:
-                _logger.info(f"Encountered errors when upserting address balance")
+            await self.update_address_balances(list(addresses_to_find_balance))
 
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
@@ -181,6 +160,26 @@ class VirtualChainProcessor(object):
 
         # Clear the current response
         self.virtual_chain_response = None
+
+    async def update_address_balances(self, addresses: List[str]):
+        """
+        Updates the balances for the given addresses
+        """
+        # Do it in batches of 1000
+        BATCH_SIZE = 1000
+        for i in range(0, len(addresses), BATCH_SIZE):
+            address_balance_rows = await self.__get_balances_for_addresses(addresses)
+            with session_maker() as s:
+                try:
+                    for i in address_balance_rows:
+                        s.merge(i)
+                    s.commit()
+
+                    _logger.info(
+                        f"Updated {len(address_balance_rows)} address balances"
+                    )
+                except:
+                    _logger.info(f"Encountered errors when upserting address balance")
 
     async def update_accepted_info(self):
         """
