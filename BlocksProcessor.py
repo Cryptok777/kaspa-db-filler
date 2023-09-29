@@ -19,6 +19,7 @@ CLUSTER_SIZE_INITIAL = int(os.getenv("CLUSTER_SIZE_INITIAL", 150))
 CLUSTER_SIZE_SYNCED = 20
 CLUSTER_WAIT_SECONDS = 4
 
+import insert_ignore
 
 class BlocksProcessor(object):
     """
@@ -223,6 +224,7 @@ class BlocksProcessor(object):
         cnt = 0
 
         with session_maker() as session:
+            to_be_added = []
             for tx_addr_mapping in self.tx_addr_mapping:
                 if (
                     tx_addr_tuple := (
@@ -230,23 +232,13 @@ class BlocksProcessor(object):
                         tx_addr_mapping.address,
                     )
                 ) not in self.tx_addr_cache:
-                    session.add(tx_addr_mapping)
+                    to_be_added.append(tx_addr_mapping)
                     cnt += 1
                     self.tx_addr_cache.append(tx_addr_tuple)
 
-            try:
-                session.commit()
-                _logger.info(f"Added {cnt} tx-address mapping items successfully")
-            except IntegrityError:
-                _logger.info(f"Encountered commit issue, rolling back")
-                session.rollback()
-                _logger.debug("add tx-addr mapping step by step.")
-                for tx_addr_mapping in self.tx_addr_mapping:
-                    session.add(tx_addr_mapping)
-                    try:
-                        session.commit()
-                    except IntegrityError:
-                        session.rollback()
+            session.bulk_save_objects(to_be_added)
+            session.commit()
+            _logger.info(f"Added {cnt} tx-address mapping items successfully")
 
         self.tx_addr_mapping = []
         self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
