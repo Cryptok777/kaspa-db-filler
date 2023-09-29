@@ -324,7 +324,7 @@ class BlocksProcessor(object):
             nonce=block["header"]["nonce"],
             parents=block["header"]["parents"][0]["parentHashes"],
             pruning_point=block["header"]["pruningPoint"],
-            timestamp=datetime.fromtimestamp(
+            timestamp=datetime.utcfromtimestamp(
                 int(block["header"]["timestamp"]) / 1000
             ).isoformat(),
             utxo_commitment=block["header"]["utxoCommitment"],
