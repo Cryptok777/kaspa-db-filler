@@ -21,6 +21,7 @@ CLUSTER_WAIT_SECONDS = 4
 
 import insert_ignore
 
+
 class BlocksProcessor(object):
     """
     BlocksProcessor polls kaspad for blocks and adds the meta information and it's transactions into database.
@@ -267,19 +268,20 @@ class BlocksProcessor(object):
 
             session.commit()
 
-        # Go through all transactions which were not in the database and add now.
         with session_maker() as session:
-            # go through queues and add
-            for _ in self.txs.values():
-                session.add(_)
+            session.bulk_save_objects(self.txs.values())
+
+            pending_objects = []
 
             for tx_output in self.txs_output:
                 if tx_output.transaction_id in self.txs:
-                    session.add(tx_output)
+                    pending_objects.append(tx_output)
 
             for tx_input in self.txs_input:
                 if tx_input.transaction_id in self.txs:
-                    session.add(tx_input)
+                    pending_objects.append(tx_input)
+
+            session.bulk_save_objects(pending_objects)
 
             try:
                 session.commit()
@@ -342,8 +344,7 @@ class BlocksProcessor(object):
 
         # insert blocks
         with session_maker() as session:
-            for _ in self.blocks_to_add:
-                session.add(_)
+            session.bulk_save_objects(self.blocks_to_add)
             try:
                 session.commit()
                 _logger.debug(
