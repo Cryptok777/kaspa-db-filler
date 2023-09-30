@@ -43,7 +43,7 @@ task_runner = None
 
 
 async def get_start_block_hash():
-    return "abd7cde19811d83c120146b9b472c7bab29feab1e2bcf26f864296ea2cd6629f"
+    return "357fc451eb61eb962102c10921db27dd665bd525cb2322444d2b8149d95465e3"
 
     with session_maker() as s:
         try:
