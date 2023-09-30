@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime
 import os
+from sqlalchemy import insert
 
 from sqlalchemy.exc import IntegrityError
 
@@ -238,7 +239,13 @@ class BlocksProcessor(object):
                     self.tx_addr_cache.append(tx_addr_tuple)
 
             session.bulk_save_objects(to_be_added)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                _logger.error("Error adding tx-address mapping")
+                raise
+
             _logger.info(f"Added {cnt} tx-address mapping items successfully")
 
         self.tx_addr_mapping = []
@@ -335,11 +342,9 @@ class BlocksProcessor(object):
         """
         # delete already set old blocks
         with session_maker() as session:
-            d = (
-                session.query(Block)
-                .filter(Block.hash.in_([b.hash for b in self.blocks_to_add]))
-                .delete()
-            )
+            session.query(Block).filter(
+                Block.hash.in_([b.hash for b in self.blocks_to_add])
+            ).delete()
             session.commit()
 
         # insert blocks

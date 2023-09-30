@@ -41,7 +41,10 @@ if not kaspad_hosts:
 client = KaspadMultiClient(kaspad_hosts)
 task_runner = None
 
+
 async def get_start_block_hash():
+    return "abd7cde19811d83c120146b9b472c7bab29feab1e2bcf26f864296ea2cd6629f"
+
     with session_maker() as s:
         try:
             return (
@@ -54,8 +57,8 @@ async def get_start_block_hash():
             )
         except AttributeError:
             return None
-    
-    
+
+
 async def main():
     # initialize kaspads
     await client.initialize_all()
@@ -87,7 +90,7 @@ async def main():
             _logger.debug("Checking exceptions in VCP")
             task_runner.result()
 
-        _logger.debug('Update is_accepted for TXs.')
+        _logger.debug("Update is_accepted for TXs.")
         task_runner = asyncio.create_task(vcp.update_accepted_info())
 
     # set up event to fire after adding new blocks
