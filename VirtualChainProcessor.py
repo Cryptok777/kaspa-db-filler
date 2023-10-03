@@ -169,22 +169,25 @@ class VirtualChainProcessor(object):
         """
         Updates the balances for the given addresses
         """
-        # Do it in batches of 1000
         BATCH_SIZE = 1000
         _logger.info(f"START: Update {len(addresses)} address balances")
 
+        address_balance_rows = []
         for i in range(0, len(addresses), BATCH_SIZE):
-            address_balance_rows = await self.__get_balances_for_addresses(
+            rows = await self.__get_balances_for_addresses(
                 addresses[i : i + BATCH_SIZE]
             )
-            with session_maker() as s:
-                try:
-                    s.bulk_save_objects(address_balance_rows)
-                    s.commit()
-                except Exception as e:
-                    _logger.info(
-                        f"Encountered errors when upserting address balance, error:", e
-                    )
+            address_balance_rows.extend(rows)
+
+        with session_maker() as s:
+            try:
+                s.bulk_save_objects(address_balance_rows)
+                s.commit()
+            except Exception as e:
+                _logger.info(
+                    f"Encountered errors when upserting address balance, error: {e}"
+                )
+                s.rollback()
 
         _logger.info(f"FINISH: Update {len(addresses)} address balances")
 
