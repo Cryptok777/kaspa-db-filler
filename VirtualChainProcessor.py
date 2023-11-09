@@ -112,9 +112,7 @@ class VirtualChainProcessor(object):
                 )
 
                 _logger.info(f"Set is_accepted=False for {count} TXs")
-                s.commit()
 
-                # _logger.info(f"Now gather is_accepted=False tx to update balance")
                 if rejected_tx_ids:
                     addrs = (
                         s.query(TxAddrMapping.address)
@@ -140,9 +138,7 @@ class VirtualChainProcessor(object):
             _logger.debug(
                 f"DONE: Set is_accepted=True for {len(accepted_ids)} transactions."
             )
-            s.commit()
 
-            # _logger.info(f"Now gather is_accepted=True tx to update balance")
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
                 # Find addresses to update balance
                 addrs = (
@@ -156,7 +152,16 @@ class VirtualChainProcessor(object):
             if None in addresses_to_find_balance:
                 addresses_to_find_balance.remove(None)
 
-            await self.update_address_balances(list(addresses_to_find_balance))
+            await self.update_address_balances(s, list(addresses_to_find_balance))
+
+            # Need to make sure transactional in this function
+            _logger.debug(
+                f"START: Committing changes from update_transactions_in_db"
+            )
+            s.commit()
+            _logger.debug(
+                f"END: Committing changes from update_transactions_in_db"
+            )
 
         # Mark last known/processed as start point for the next query
         if last_known_chain_block:
@@ -165,7 +170,7 @@ class VirtualChainProcessor(object):
         # Clear the current response
         self.virtual_chain_response = None
 
-    async def update_address_balances(self, addresses: List[str]):
+    async def update_address_balances(self, s, addresses: List[str]):
         """
         Updates the balances for the given addresses
         """
@@ -179,16 +184,7 @@ class VirtualChainProcessor(object):
             )
             address_balance_rows.extend(rows)
 
-        with session_maker() as s:
-            try:
-                s.bulk_save_objects(address_balance_rows)
-                s.commit()
-            except Exception as e:
-                _logger.info(
-                    f"Encountered errors when upserting address balance, error: {e}"
-                )
-                s.rollback()
-
+        s.bulk_save_objects(address_balance_rows)
         _logger.info(f"FINISH: Update {len(addresses)} address balances")
 
     async def update_accepted_info(self):
