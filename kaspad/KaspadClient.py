@@ -28,6 +28,7 @@ class KaspadClient(object):
             return info
 
         except Exception as exc:
+            _logger.debug("ping err", exc)
             return False
 
     async def request(self, command, params=None, timeout=60, retry=0):
