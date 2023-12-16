@@ -20,7 +20,7 @@ class KaspadClient(object):
     async def ping(self):
         try:
             info = await self.request("getInfoRequest")
-            _logger.debug("ping", info)
+            _logger.debug(f'ping content {info}')
             self.server_version = info["getInfoResponse"]["serverVersion"]
             self.is_utxo_indexed = info["getInfoResponse"]["isUtxoIndexed"]
             self.is_synced = info["getInfoResponse"]["isSynced"]
