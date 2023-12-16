@@ -23,7 +23,10 @@ class KaspadMultiClient(object):
 
     async def request(self, command, params=None, timeout=60):
         try:
-            return await self.__get_kaspad().request(command, params, timeout=timeout, retry=1)
+            c = self.__get_kaspad()
+            if not c:
+                raise KaspadCommunicationError("client not init")
+            return await c.request(command, params, timeout=timeout, retry=1)
         except KaspadCommunicationError:
             await self.initialize_all()
             return await self.__get_kaspad().request(command, params, timeout=timeout, retry=3)
