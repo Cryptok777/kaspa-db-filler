@@ -24,6 +24,7 @@ class KaspadClient(object):
             self.is_utxo_indexed = info["getInfoResponse"]["isUtxoIndexed"]
             self.is_synced = info["getInfoResponse"]["isSynced"]
             self.p2p_id = info["getInfoResponse"]["p2pId"]
+            _logger.debug("ping", info)
             return info
 
         except Exception as exc:
