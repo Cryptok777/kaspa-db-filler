@@ -23,7 +23,7 @@ class KaspadClient(object):
             _logger.debug(f'ping content {info}')
             self.server_version = info["getInfoResponse"]["serverVersion"]
             self.is_utxo_indexed = info["getInfoResponse"]["isUtxoIndexed"]
-            self.is_synced = True # info["getInfoResponse"]["isSynced"]
+            self.is_synced = info["getInfoResponse"]["isSynced"]
             self.p2p_id = info["getInfoResponse"]["p2pId"]
             return info
 
