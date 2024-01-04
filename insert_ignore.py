@@ -37,9 +37,34 @@ def append_statement_to_update_address_balance(statement: str):
         return statement + on_conflict_stmt
 
 
+def append_statement_to_update_transaction_block_hashes(statement: str):
+    on_conflict_stmt = """ 
+        ON CONFLICT (transaction_id) DO UPDATE SET
+        block_hash = (
+            SELECT array_agg(DISTINCT element)
+            FROM (
+                SELECT unnest(transactions.block_hash || EXCLUDED.block_hash) AS element
+            ) AS subquery
+        )
+    """
+
+    returning_position = statement.find("RETURNING")
+    if returning_position >= 0:
+        return (
+            statement[:returning_position]
+            + on_conflict_stmt
+            + statement[returning_position:]
+        )
+    else:
+        return statement + on_conflict_stmt
+
+
 @compiles(Insert, "postgresql")
 def postgresql_on_conflict(insert, compiler, **kw):
     statement = compiler.visit_insert(insert, **kw)
+
+    if insert.table.name == Transaction.__tablename__:
+        return append_statement_to_update_transaction_block_hashes(statement)
 
     if insert.table.name in [
         TxAddrMapping.__tablename__,

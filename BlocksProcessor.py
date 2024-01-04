@@ -16,9 +16,10 @@ from utils.Event import Event
 
 _logger = logging.getLogger(__name__)
 
+BPS = 10
 CLUSTER_SIZE_INITIAL = int(os.getenv("CLUSTER_SIZE_INITIAL", 150))
-CLUSTER_SIZE_SYNCED = 20
-CLUSTER_WAIT_SECONDS = 4
+CLUSTER_SIZE_SYNCED = BPS * 10
+CLUSTER_WAIT_SECONDS = 2
 
 import insert_ignore
 
@@ -37,9 +38,6 @@ class BlocksProcessor(object):
         self.txs_output = []
         self.txs_input = []
         self.tx_addr_mapping = []
-
-        # cache for checking already added tx mapping
-        self.tx_addr_cache = []
 
         # Did the loop already see the DAG tip
         self.synced = False
@@ -114,6 +112,9 @@ class BlocksProcessor(object):
                 await asyncio.sleep(CLUSTER_WAIT_SECONDS)
 
     def __get_address_from_tx_outputs(self, transaction_id, index):
+        # TODO: possible bottleneck - make it batched
+        # return ""
+
         with session_maker() as session:
             return (
                 session.query(TransactionOutput.script_public_key_address)
@@ -200,6 +201,7 @@ class BlocksProcessor(object):
                                 f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
                                 f" ({tx_in['previousOutpoint'].get('index', 0)})"
                             )
+                            pass
 
                     staging_tx_addr_mapping.append(
                         TxAddrMapping(
@@ -232,22 +234,8 @@ class BlocksProcessor(object):
                 )
 
     async def add_and_commit_tx_addr_mapping(self):
-        cnt = 0
-
         with session_maker() as session:
-            to_be_added = []
-            for tx_addr_mapping in self.tx_addr_mapping:
-                if (
-                    tx_addr_tuple := (
-                        tx_addr_mapping.transaction_id,
-                        tx_addr_mapping.address,
-                    )
-                ) not in self.tx_addr_cache:
-                    to_be_added.append(tx_addr_mapping)
-                    cnt += 1
-                    self.tx_addr_cache.append(tx_addr_tuple)
-
-            session.bulk_save_objects(to_be_added)
+            session.bulk_save_objects(self.tx_addr_mapping)
             try:
                 session.commit()
             except IntegrityError:
@@ -255,35 +243,16 @@ class BlocksProcessor(object):
                 _logger.error("Error adding tx-address mapping")
                 raise
 
-            _logger.info(f"Added {cnt} tx-address mapping items successfully")
+            _logger.info(
+                f"Added {len(self.tx_addr_mapping)} tx-address mapping items successfully"
+            )
 
         self.tx_addr_mapping = []
-        self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
 
     async def commit_txs(self):
         """
         Add all queued transactions and it's in- and outputs to database
         """
-        # First go through all transactions and check, if there are already added ones.
-        # If yes, update block_hash and remove from queue
-        tx_ids_to_add = list(self.txs.keys())
-        with session_maker() as session:
-            tx_items = (
-                session.query(Transaction)
-                .filter(Transaction.transaction_id.in_(tx_ids_to_add))
-                .all()
-            )
-            for tx_item in tx_items:
-                tx_item.block_hash = list(
-                    (
-                        set(tx_item.block_hash)
-                        | set(self.txs[tx_item.transaction_id].block_hash)
-                    )
-                )
-                self.txs.pop(tx_item.transaction_id)
-
-            session.commit()
-
         with session_maker() as session:
             session.bulk_save_objects(self.txs.values())
 
