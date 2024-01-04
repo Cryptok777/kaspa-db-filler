@@ -42,6 +42,7 @@ def postgresql_on_conflict(insert, compiler, **kw):
     statement = compiler.visit_insert(insert, **kw)
 
     if insert.table.name in [
+        Transaction.__tablename__,
         TxAddrMapping.__tablename__,
         TransactionInput.__tablename__,
         TransactionOutput.__tablename__,
