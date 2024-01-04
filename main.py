@@ -62,7 +62,7 @@ async def main():
     await client.initialize_all()
 
     # find last acceptedTx's block hash, when restarting this tool
-    start_hash = '70d25abce0ce7472b4083151f75972f8db3d3c20744dc314b711576047809f8e' #await get_start_block_hash()
+    start_hash = await get_start_block_hash()
 
     # if there is nothing in the db, just get latest block.
     if not start_hash:
@@ -99,9 +99,9 @@ async def main():
         try:
             await bp.loop(start_hash)
         except Exception:
-            _logger.exception("Exception occured and script crashed. Restart in 30s")
+            _logger.exception("Exception occured and script crashed. Restart in 1m")
             bp.synced = False
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
             start_hash = await get_start_block_hash()
 
 
