@@ -130,25 +130,18 @@ class BlocksProcessor(object):
         for transaction in block["transactions"]:
             tx_id = transaction["verboseData"]["transactionId"]
 
+            staging_txs_output = []
+            staging_txs_inputs = []
+            staging_tx_addr_mapping = []
+
             # Check, that the transaction isn't prepared yet. Otherwise ignore
             # Often transactions are added in more than one block
-            if not self.is_tx_id_in_queue(transaction["verboseData"]["transactionId"]):
-                # Add transaction
-
-                self.txs[tx_id] = Transaction(
-                    subnetwork_id=transaction["subnetworkId"],
-                    transaction_id=transaction["verboseData"]["transactionId"],
-                    hash=transaction["verboseData"]["hash"],
-                    mass=transaction["verboseData"].get("mass"),
-                    block_hash=[transaction["verboseData"]["blockHash"]],
-                    block_time=int(transaction["verboseData"]["blockTime"]),
-                )
-
+            if not self.is_tx_id_in_queue(tx_id):
                 # Add transactions output
                 for index, out in enumerate(transaction["outputs"]):
-                    self.txs_output.append(
+                    staging_txs_output.append(
                         TransactionOutput(
-                            transaction_id=transaction["verboseData"]["transactionId"],
+                            transaction_id=tx_id,
                             index=index,
                             amount=out["amount"],
                             script_public_key=out["scriptPublicKey"]["scriptPublicKey"],
@@ -161,9 +154,9 @@ class BlocksProcessor(object):
                         )
                     )
 
-                    self.tx_addr_mapping.append(
+                    staging_tx_addr_mapping.append(
                         TxAddrMapping(
-                            transaction_id=transaction["verboseData"]["transactionId"],
+                            transaction_id=tx_id,
                             address=out["verboseData"]["scriptPublicKeyAddress"],
                             block_time=int(transaction["verboseData"]["blockTime"]),
                             is_accepted=False,
@@ -172,9 +165,9 @@ class BlocksProcessor(object):
 
                 # Add transactions input
                 for index, tx_in in enumerate(transaction.get("inputs", [])):
-                    self.txs_input.append(
+                    staging_txs_inputs.append(
                         TransactionInput(
-                            transaction_id=transaction["verboseData"]["transactionId"],
+                            transaction_id=tx_id,
                             index=index,
                             previous_outpoint_hash=tx_in["previousOutpoint"][
                                 "transactionId"
@@ -183,7 +176,7 @@ class BlocksProcessor(object):
                                 tx_in["previousOutpoint"].get("index", 0)
                             ),
                             signature_script=tx_in["signatureScript"],
-                            sig_op_count=tx_in["sigOpCount"],
+                            sig_op_count=tx_in.get("sigOpCount", 0),
                         )
                     )
 
@@ -208,14 +201,30 @@ class BlocksProcessor(object):
                                 f" ({tx_in['previousOutpoint'].get('index', 0)})"
                             )
 
-                    self.tx_addr_mapping.append(
+                    staging_tx_addr_mapping.append(
                         TxAddrMapping(
-                            transaction_id=transaction["verboseData"]["transactionId"],
+                            transaction_id=tx_id,
                             address=inp_address,
                             block_time=int(transaction["verboseData"]["blockTime"]),
                             is_accepted=False,
                         )
                     )
+
+                # Add transaction
+                self.txs[tx_id] = Transaction(
+                    subnetwork_id=transaction["subnetworkId"],
+                    transaction_id=tx_id,
+                    hash=transaction["verboseData"]["hash"],
+                    mass=transaction["verboseData"].get("mass"),
+                    block_hash=[transaction["verboseData"]["blockHash"]],
+                    block_time=int(transaction["verboseData"]["blockTime"]),
+                )
+
+                # apply staging inputs/outputs/tx_addr_mapping
+                self.txs_output.extend(staging_txs_output)
+                self.txs_input.extend(staging_txs_inputs)
+                self.tx_addr_mapping.extend(staging_tx_addr_mapping)
+
             else:
                 # If the block is already in the Queue, merge the block_hashes.
                 self.txs[tx_id].block_hash = list(
