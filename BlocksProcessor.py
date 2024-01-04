@@ -266,23 +266,23 @@ class BlocksProcessor(object):
         """
         # First go through all transactions and check, if there are already added ones.
         # If yes, update block_hash and remove from queue
-        # tx_ids_to_add = list(self.txs.keys())
-        # with session_maker() as session:
-        #     tx_items = (
-        #         session.query(Transaction)
-        #         .filter(Transaction.transaction_id.in_(tx_ids_to_add))
-        #         .all()
-        #     )
-        #     for tx_item in tx_items:
-        #         tx_item.block_hash = list(
-        #             (
-        #                 set(tx_item.block_hash)
-        #                 | set(self.txs[tx_item.transaction_id].block_hash)
-        #             )
-        #         )
-        #         self.txs.pop(tx_item.transaction_id)
+        tx_ids_to_add = list(self.txs.keys())
+        with session_maker() as session:
+            tx_items = (
+                session.query(Transaction)
+                .filter(Transaction.transaction_id.in_(tx_ids_to_add))
+                .all()
+            )
+            for tx_item in tx_items:
+                tx_item.block_hash = list(
+                    (
+                        set(tx_item.block_hash)
+                        | set(self.txs[tx_item.transaction_id].block_hash)
+                    )
+                )
+                self.txs.pop(tx_item.transaction_id)
 
-        #     session.commit()
+            session.commit()
 
         with session_maker() as session:
             session.bulk_save_objects(self.txs.values())
