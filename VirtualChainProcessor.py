@@ -169,7 +169,7 @@ class VirtualChainProcessor(object):
         """
         Updates the balances for the given addresses
         """
-        BATCH_SIZE = 1000
+        BATCH_SIZE = 300
         _logger.info(f"START: Update {len(addresses)} address balances")
 
         address_balance_rows = []
