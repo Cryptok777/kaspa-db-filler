@@ -195,6 +195,8 @@ class VirtualChainProcessor(object):
         """
         Updates the is_accepted flag to all blocks
         """
+        return 
+
         resp = await self.client.request(
             "getVirtualSelectedParentChainFromBlockRequest",
             {"startHash": self.start_point, "includeAcceptedTransactionIds": True},
