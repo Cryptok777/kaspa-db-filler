@@ -138,7 +138,7 @@ class BlocksProcessor(object):
             # Often transactions are added in more than one block
             if not self.is_tx_id_in_queue(tx_id):
                 # Add transactions output
-                for index, out in enumerate(transaction["outputs"]):
+                for index, out in enumerate(transaction.get("outputs", [])):
                     staging_txs_output.append(
                         TransactionOutput(
                             transaction_id=tx_id,
