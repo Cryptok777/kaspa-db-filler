@@ -26,6 +26,7 @@ class VirtualChainProcessor(object):
         self.virtual_chain_response = None
         self.start_point = start_point
         self.client = client
+        self.should_update_balances = True
 
     async def __get_balances_for_addresses(self, addresses: List[str]):
         resp = await self.client.request(
@@ -71,8 +72,6 @@ class VirtualChainProcessor(object):
             )
             parent_chain_blocks_in_db = [x[0] for x in parent_chain_blocks_in_db]
 
-        # parent_chain_blocks_in_db = parent_chain_blocks_in_db[:200]
-
         # go through all acceptedTransactionIds and stop if a block hash is not in database
         for tx_accept_dict in parent_chain_response["acceptedTransactionIds"]:
             accepting_block_hash = tx_accept_dict["acceptingBlockHash"]
@@ -95,6 +94,8 @@ class VirtualChainProcessor(object):
         rejected_blocks.extend(parent_chain_response.get("removedChainBlockHashes", []))
 
         with session_maker() as s:
+            status_updated_tx_ids = []  # pending tx ids to update address balances
+
             # set is_accepted to False, when blocks were removed from virtual parent chain
             if rejected_blocks:
                 _logger.debug(f"Found rejected blocks: {rejected_blocks}")
@@ -111,19 +112,10 @@ class VirtualChainProcessor(object):
                     .update({"is_accepted": False, "accepting_block_hash": None})
                 )
 
-                _logger.info(f"Set is_accepted=False for {count} TXs")
                 s.commit()
+                _logger.info(f"DONE: Set is_accepted=False for {count} TXs")
 
-                # _logger.info(f"Now gather is_accepted=False tx to update balance")
-                if rejected_tx_ids:
-                    addrs = (
-                        s.query(TxAddrMapping.address)
-                        .filter(TxAddrMapping.transaction_id.in_(rejected_tx_ids))
-                        .all()
-                    )
-                    addresses_to_find_balance.update([i[0] for i in addrs])
-
-            count_tx = 0
+                status_updated_tx_ids.extend(rejected_tx_ids)
 
             # set is_accepted to True and add accepting_block_hash
             _logger.debug(
@@ -135,19 +127,19 @@ class VirtualChainProcessor(object):
                 ).update(
                     {"is_accepted": True, "accepting_block_hash": accepting_block_hash}
                 )
-                count_tx += len(accepted_tx_ids)
 
+                status_updated_tx_ids.extend(accepted_tx_ids)
+
+            s.commit()
             _logger.debug(
                 f"DONE: Set is_accepted=True for {len(accepted_ids)} transactions."
             )
-            s.commit()
 
-            # _logger.info(f"Now gather is_accepted=True tx to update balance")
-            for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                # Find addresses to update balance
+            if self.should_update_balances:
+                status_updated_tx_ids = list(set(status_updated_tx_ids))
                 addrs = (
                     s.query(TxAddrMapping.address)
-                    .filter(TxAddrMapping.transaction_id.in_(accepted_tx_ids))
+                    .filter(TxAddrMapping.transaction_id.in_(status_updated_tx_ids))
                     .all()
                 )
                 addresses_to_find_balance.update([i[0] for i in addrs])
