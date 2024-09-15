@@ -42,9 +42,10 @@ def postgresql_on_conflict(insert, compiler, **kw):
     statement = compiler.visit_insert(insert, **kw)
 
     if insert.table.name in [
-        TxAddrMapping.__tablename__,
+        Transaction.__tablename__,
         TransactionInput.__tablename__,
         TransactionOutput.__tablename__,
+        TxAddrMapping.__tablename__,
     ]:
         return append_statement_to_ignore(statement)
 

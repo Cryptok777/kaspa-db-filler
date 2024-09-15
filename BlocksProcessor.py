@@ -44,6 +44,9 @@ class BlocksProcessor(object):
         # Did the loop already see the DAG tip
         self.synced = False
 
+        self.add_tx_addr_mapping = False
+        self.update_block_hash = False
+
     async def loop(self, start_point):
         # go through each block added to DAG
         async for block_hash, block in self.blockiter(start_point):
@@ -114,6 +117,9 @@ class BlocksProcessor(object):
                 await asyncio.sleep(CLUSTER_WAIT_SECONDS)
 
     def __get_address_from_tx_outputs(self, transaction_id, index):
+        if not self.add_tx_addr_mapping:
+            return None
+
         with session_maker() as session:
             return (
                 session.query(TransactionOutput.script_public_key_address)
@@ -186,7 +192,7 @@ class BlocksProcessor(object):
                     )
 
                     # if tx is in the output cache and not in DB yet
-                    if inp_address is None:
+                    if inp_address is None and self.add_tx_addr_mapping:
                         for output in self.txs_output:
                             if output.transaction_id == tx_in["previousOutpoint"][
                                 "transactionId"
@@ -195,11 +201,6 @@ class BlocksProcessor(object):
                             ):
                                 inp_address = output.script_public_key_address
                                 break
-                        else:
-                            _logger.warning(
-                                f"Unable to find address for {tx_in['previousOutpoint']['transactionId']}"
-                                f" ({tx_in['previousOutpoint'].get('index', 0)})"
-                            )
 
                     staging_tx_addr_mapping.append(
                         TxAddrMapping(
@@ -232,6 +233,10 @@ class BlocksProcessor(object):
                 )
 
     async def add_and_commit_tx_addr_mapping(self):
+        if not self.add_tx_addr_mapping:
+            _logger.info("Skipping tx-addr mapping")
+            return
+
         cnt = 0
 
         with session_maker() as session:
@@ -274,18 +279,22 @@ class BlocksProcessor(object):
                 .all()
             )
             for tx_item in tx_items:
-                tx_item.block_hash = list(
-                    (
-                        set(tx_item.block_hash)
-                        | set(self.txs[tx_item.transaction_id].block_hash)
+                if self.update_block_hash:
+                    tx_item.block_hash = list(
+                        (
+                            set(tx_item.block_hash)
+                            | set(self.txs[tx_item.transaction_id].block_hash)
+                        )
                     )
-                )
                 self.txs.pop(tx_item.transaction_id)
 
             session.commit()
 
         with session_maker() as session:
+            _logger.info(f"Start: Adding {len(self.txs)} TXs to database")
             session.bulk_save_objects(self.txs.values())
+
+            _logger.debug(f"Added {len(self.txs)} TXs to database")
 
             pending_objects = []
 
@@ -301,7 +310,9 @@ class BlocksProcessor(object):
 
             try:
                 session.commit()
-                _logger.debug(f"Added {len(self.txs)} TXs to database")
+                _logger.debug(
+                    f"Added {len(self.txs_output)} outputs, {len(self.txs_input)} inputs"
+                )
 
                 # reset queues
                 self.txs = {}

@@ -27,6 +27,7 @@ class VirtualChainProcessor(object):
         self.start_point = start_point
         self.client = client
         self.should_update_balances = False
+        self.add_tx_addr_mapping = False
 
     async def __get_balances_for_addresses(self, addresses: List[str]):
         resp = await self.client.request(
@@ -119,20 +120,27 @@ class VirtualChainProcessor(object):
 
             # set is_accepted to True and add accepting_block_hash
             _logger.debug(
-                f"START: Set is_accepted=True for {len(accepted_ids)} transactions."
+                f"START: Set is_accepted=True for txs in {len(accepted_ids)} blocks"
             )
+
+            tx_count = 0
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                s.query(Transaction).filter(
-                    Transaction.transaction_id.in_(accepted_tx_ids)
-                ).update(
-                    {"is_accepted": True, "accepting_block_hash": accepting_block_hash}
+                tx_count += (
+                    s.query(Transaction)
+                    .filter(Transaction.transaction_id.in_(accepted_tx_ids))
+                    .update(
+                        {
+                            "is_accepted": True,
+                            "accepting_block_hash": accepting_block_hash,
+                        }
+                    )
                 )
 
                 status_updated_tx_ids.extend(accepted_tx_ids)
 
             s.commit()
             _logger.debug(
-                f"DONE: Set is_accepted=True for {len(accepted_ids)} transactions."
+                f"DONE: Set is_accepted=True for txs in {len(accepted_ids)} blocks, total updated {tx_count} txs"
             )
 
             if self.should_update_balances:
