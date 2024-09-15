@@ -17,7 +17,7 @@ from utils.Event import Event
 _logger = logging.getLogger(__name__)
 
 CLUSTER_SIZE_INITIAL = int(os.getenv("CLUSTER_SIZE_INITIAL", 150))
-CLUSTER_SIZE_SYNCED = 20
+CLUSTER_SIZE_SYNCED = 10
 CLUSTER_WAIT_SECONDS = 1
 
 import insert_ignore
