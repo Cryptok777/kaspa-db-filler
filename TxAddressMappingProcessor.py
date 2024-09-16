@@ -8,7 +8,6 @@ from collections import defaultdict
 from dbsession import async_session_maker
 from models.Transaction import TransactionOutput
 from models.TxAddrMapping import TxAddrMapping
-from tqdm.asyncio import tqdm
 from sqlalchemy import text
 
 import insert_ignore
@@ -106,7 +105,6 @@ class TxAddressMappingProcessor:
     async def _process_batch(self, batch: Dict[str, List]):
         try:
             tx_addr_mappings = []
-            total_transactions = len(batch["transactions"])
 
             # Prepare all inputs for batch processing
             all_inputs = []
@@ -118,12 +116,7 @@ class TxAddressMappingProcessor:
             input_addresses = await self._get_addresses_for_inputs(all_inputs)
             _logger.info("Finished fetching addresses for all inputs")
 
-            async for tx_id, tx_data in tqdm(
-                batch["transactions"].items(),
-                total=total_transactions,
-                desc="Processing transactions",
-                unit="tx",
-            ):
+            for tx_id, tx_data in batch["transactions"].items():
                 tx_addr_mappings.extend(
                     await self._process_transaction(tx_id, tx_data, input_addresses)
                 )
