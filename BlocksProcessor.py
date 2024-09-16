@@ -342,10 +342,8 @@ class BlocksProcessor(object):
             )
 
             # Prepare batch for TxAddressMappingProcessor
-            # await self.tx_addr_mapping_processor.add_batch(
-            #     self.txs, self.txs_output, self.txs_input
-            # )
-            # self.tx_addr_mapping_processor.start_processing()
+            await self.tx_addr_mapping_processor.add_batch()
+            self.tx_addr_mapping_processor.start_processing()
 
             # Reset queues
             self.txs = {}

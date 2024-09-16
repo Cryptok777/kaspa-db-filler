@@ -9,6 +9,7 @@ from dbsession import async_session_maker
 from models.Transaction import TransactionOutput
 from models.TxAddrMapping import TxAddrMapping
 from tqdm.asyncio import tqdm
+from sqlalchemy import text
 
 import insert_ignore
 
@@ -29,12 +30,78 @@ class TxAddressMappingProcessor:
             if batch is None:
                 _logger.info("Received stop signal, stopping queue processing")
                 break
-            _logger.debug(
-                f"Start processing batch with {len(batch['transactions'])} transactions"
-            )
-            await self._process_batch(batch)
+
+            await self.run_backfill_query()
             self.queue.task_done()
         _logger.info("Queue processing stopped")
+
+    async def run_backfill_query(self):
+        _logger.info("Running backfill query")
+        async with async_session_maker() as s:
+            try:
+                await s.execute(
+                    text(
+                        """
+                            DO $$
+                            DECLARE
+                                max_block_time bigint;
+                            BEGIN
+                                SELECT (SELECT MAX(block_time) from tx_id_address_mapping) INTO max_block_time;
+
+                                -- Backfill tx_mapping table
+                                with tx_mapping AS (
+                                    SELECT DISTINCT
+                                        t.transaction_id,
+                                        ti_input.script_public_key_address AS address,
+                                        t.block_time,
+                                        t.is_accepted
+                                    FROM
+                                        public.transactions AS t
+                                        LEFT JOIN (
+                                        SELECT
+                                            ti.transaction_id,
+                                            ti.index,
+                                            ti.previous_outpoint_hash,
+                                            ti.previous_outpoint_index,
+                                            to_prev.script_public_key_address
+                                        FROM
+                                            public.transactions_inputs AS ti
+                                            LEFT JOIN public.transactions_outputs AS to_prev ON ti.previous_outpoint_hash = to_prev.transaction_id
+                                            AND ti.previous_outpoint_index :: integer = to_prev.index
+                                        ) AS ti_input ON t.transaction_id = ti_input.transaction_id
+                                    WHERE
+                                        TRUE
+                                        AND ti_input.script_public_key_address is not null
+                                    UNION ALL
+                                    SELECT DISTINCT
+                                        t.transaction_id,
+                                        t_out.script_public_key_address AS address,
+                                        t.block_time,
+                                        t.is_accepted
+                                    FROM
+                                        public.transactions AS t
+                                        LEFT JOIN public.transactions_outputs AS t_out ON t.transaction_id = t_out.transaction_id
+                                    WHERE
+                                        TRUE
+                                        AND t_out.script_public_key_address is not null
+                                )
+
+                                INSERT INTO tx_id_address_mapping ( transaction_id, address, block_time, is_accepted )
+                                SELECT * FROM tx_mapping
+                                    WHERE TRUE
+                                    AND block_time >= max_block_time
+                                ON CONFLICT (transaction_id, address) DO NOTHING;
+
+                            END $$;
+                        """
+                    )
+                )
+
+                await s.commit()
+                _logger.info("Finished running backfill query")
+            except Exception as e:
+                _logger.error(f"Error when running backfill query: {e}")
+                await s.rollback()
 
     async def _process_batch(self, batch: Dict[str, List]):
         try:
@@ -168,32 +235,33 @@ class TxAddressMappingProcessor:
 
         await asyncio.gather(*tasks)
 
-    async def add_batch(self, txs: Dict, txs_output: List, txs_input: List):
-        outputs_dict = {}
-        inputs_dict = {}
+    async def add_batch(self):
+        # outputs_dict = {}
+        # inputs_dict = {}
 
-        for out in txs_output:
-            if out.transaction_id not in outputs_dict:
-                outputs_dict[out.transaction_id] = []
-            outputs_dict[out.transaction_id].append(out)
+        # for out in txs_output:
+        #     if out.transaction_id not in outputs_dict:
+        #         outputs_dict[out.transaction_id] = []
+        #     outputs_dict[out.transaction_id].append(out)
 
-        for inp in txs_input:
-            if inp.transaction_id not in inputs_dict:
-                inputs_dict[inp.transaction_id] = []
-            inputs_dict[inp.transaction_id].append(inp)
+        # for inp in txs_input:
+        #     if inp.transaction_id not in inputs_dict:
+        #         inputs_dict[inp.transaction_id] = []
+        #     inputs_dict[inp.transaction_id].append(inp)
 
-        # Create the batch using the dictionaries
-        batch = {
-            "transactions": {
-                tx_id: {
-                    "outputs": outputs_dict.get(tx_id, []),
-                    "inputs": inputs_dict.get(tx_id, []),
-                    "block_time": tx.block_time,
-                }
-                for tx_id, tx in txs.items()
-            }
-        }
-        await self.queue.put(batch)
+        # # Create the batch using the dictionaries
+        # batch = {
+        #     "transactions": {
+        #         tx_id: {
+        #             "outputs": outputs_dict.get(tx_id, []),
+        #             "inputs": inputs_dict.get(tx_id, []),
+        #             "block_time": tx.block_time,
+        #         }
+        #         for tx_id, tx in txs.items()
+        #     }
+        # }
+        if self.queue.empty():
+            await self.queue.put(True)
 
     def start_processing(self):
         if self.processing_task is None or self.processing_task.done():
