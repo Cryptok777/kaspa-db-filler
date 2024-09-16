@@ -5,7 +5,8 @@ name = "pypi"
 
 [packages]
 sqlalchemy = "*"
-psycopg2 = "*"
+psycopg2 = {extras = ["async"], version = "*"}
+asyncpg = "*"
 grpcio = "*"
 grpcio-tools = "*"
 load_dotenv = "*"

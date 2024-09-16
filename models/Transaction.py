@@ -23,7 +23,7 @@ class Transaction(Base):
 
 class TransactionOutput(Base):
     __tablename__ = "transactions_outputs"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String)
     index = Column(Integer)
     amount = Column(BigInteger)
@@ -36,7 +36,7 @@ class TransactionOutput(Base):
 
 class TransactionInput(Base):
     __tablename__ = "transactions_inputs"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_id = Column(String)
     index = Column(Integer)
 

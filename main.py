@@ -5,9 +5,12 @@ from dotenv import load_dotenv
 
 from BlocksProcessor import BlocksProcessor
 from VirtualChainProcessor import VirtualChainProcessor
+from TxAddressMappingProcessor import TxAddressMappingProcessor
 from dbsession import create_all, session_maker
 from kaspad.KaspadMultiClient import KaspadMultiClient
 from models.Transaction import Transaction
+from models.TxAddrMapping import TxAddrMapping
+from sqlalchemy import text
 
 load_dotenv(override=True)
 
@@ -43,6 +46,7 @@ task_runner = None
 
 
 async def get_start_block_hash():
+    # return "5fd480ffed13960d6a857e1ce82e64071934faff429fa125985fa8017dd01002"
     with session_maker() as s:
         try:
             return (
@@ -53,6 +57,27 @@ async def get_start_block_hash():
                 .first()
                 .accepting_block_hash
             )
+        except AttributeError:
+            return None
+
+
+async def get_start_block_hash_from_tx_address_mapping():
+    with session_maker() as s:
+        try:
+            result = s.execute(
+                text(
+                    """
+                    SELECT transactions.accepting_block_hash FROM tx_id_address_mapping
+                    JOIN transactions ON tx_id_address_mapping.transaction_id = transactions.transaction_id
+                    WHERE transactions.is_accepted = TRUE
+                    ORDER BY tx_id_address_mapping.block_time DESC
+                    LIMIT 1
+                """
+                )
+            )
+
+            res = result.all()
+            return res[0][0] if res and res[0] else None
         except AttributeError:
             return None
 

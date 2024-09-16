@@ -4,15 +4,19 @@ import asyncio
 import logging
 from datetime import datetime
 import os
-from sqlalchemy import insert
+from sqlalchemy import insert, select
+from sqlalchemy import update
 
 from sqlalchemy.exc import IntegrityError
 
-from dbsession import session_maker
+from dbsession import session_maker, async_session_maker
 from models.Block import Block
 from models.Transaction import Transaction, TransactionOutput, TransactionInput
 from models.TxAddrMapping import TxAddrMapping
 from utils.Event import Event
+from TxAddressMappingProcessor import TxAddressMappingProcessor
+
+from typing import List, Type
 
 _logger = logging.getLogger(__name__)
 
@@ -21,6 +25,9 @@ CLUSTER_SIZE_SYNCED = 10
 CLUSTER_WAIT_SECONDS = 1
 
 import insert_ignore
+
+BATCH_SIZE = 5000
+MAX_CONCURRENT_BATCHES = 10
 
 
 class BlocksProcessor(object):
@@ -44,8 +51,11 @@ class BlocksProcessor(object):
         # Did the loop already see the DAG tip
         self.synced = False
 
+        # Toggles
         self.add_tx_addr_mapping = False
         self.update_block_hash = False
+
+        self.tx_addr_mapping_processor = TxAddressMappingProcessor()
 
     async def loop(self, start_point):
         # go through each block added to DAG
@@ -105,7 +115,6 @@ class BlocksProcessor(object):
             if len(resp["getBlocksResponse"].get("blockHashes", [])) > 1:
                 low_hash = resp["getBlocksResponse"]["blockHashes"][-1]
             else:
-                _logger.debug("")
                 await asyncio.sleep(2)
 
             # if synced, poll blocks after 1s
@@ -116,17 +125,50 @@ class BlocksProcessor(object):
                 yield None, None
                 await asyncio.sleep(CLUSTER_WAIT_SECONDS)
 
-    def __get_address_from_tx_outputs(self, transaction_id, index):
-        if not self.add_tx_addr_mapping:
-            return None
-
-        with session_maker() as session:
-            return (
-                session.query(TransactionOutput.script_public_key_address)
+    async def __get_address_from_tx_outputs(self, transaction_id, index):
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(TransactionOutput.script_public_key_address)
                 .where(TransactionOutput.transaction_id == transaction_id)
                 .where(TransactionOutput.index == index)
-                .scalar()
             )
+            return result.scalar()
+
+    async def process_input(self, tx_id, index, tx_in, block_time):
+        staging_input = TransactionInput(
+            transaction_id=tx_id,
+            index=int(index),
+            previous_outpoint_hash=tx_in["previousOutpoint"]["transactionId"],
+            previous_outpoint_index=int(tx_in["previousOutpoint"].get("index", 0)),
+            signature_script=tx_in["signatureScript"],
+            sig_op_count=tx_in.get("sigOpCount", 0),
+        )
+
+        if not self.add_tx_addr_mapping:
+            return staging_input, None
+
+        inp_address = await self.__get_address_from_tx_outputs(
+            tx_in["previousOutpoint"]["transactionId"],
+            tx_in["previousOutpoint"].get("index", 0),
+        )
+
+        # if tx is in the output cache and not in DB yet
+        if inp_address is None:
+            for output in self.txs_output:
+                if output.transaction_id == tx_in["previousOutpoint"][
+                    "transactionId"
+                ] and output.index == tx_in["previousOutpoint"].get("index", 0):
+                    inp_address = output.script_public_key_address
+                    break
+
+        staging_mapping = TxAddrMapping(
+            transaction_id=tx_id,
+            address=inp_address,
+            block_time=int(block_time),
+            is_accepted=False,
+        )
+
+        return staging_input, staging_mapping
 
     async def __add_tx_to_queue(self, block_hash, block):
         """
@@ -148,8 +190,8 @@ class BlocksProcessor(object):
                     staging_txs_output.append(
                         TransactionOutput(
                             transaction_id=tx_id,
-                            index=index,
-                            amount=out["amount"],
+                            index=int(index),
+                            amount=int(out["amount"]),
                             script_public_key=out["scriptPublicKey"]["scriptPublicKey"],
                             script_public_key_address=out["verboseData"][
                                 "scriptPublicKeyAddress"
@@ -170,46 +212,18 @@ class BlocksProcessor(object):
                     )
 
                 # Add transactions input
-                for index, tx_in in enumerate(transaction.get("inputs", [])):
-                    staging_txs_inputs.append(
-                        TransactionInput(
-                            transaction_id=tx_id,
-                            index=index,
-                            previous_outpoint_hash=tx_in["previousOutpoint"][
-                                "transactionId"
-                            ],
-                            previous_outpoint_index=int(
-                                tx_in["previousOutpoint"].get("index", 0)
-                            ),
-                            signature_script=tx_in["signatureScript"],
-                            sig_op_count=tx_in.get("sigOpCount", 0),
-                        )
+                input_tasks = [
+                    self.process_input(
+                        tx_id, index, tx_in, transaction["verboseData"]["blockTime"]
                     )
+                    for index, tx_in in enumerate(transaction.get("inputs", []))
+                ]
+                input_results = await asyncio.gather(*input_tasks)
 
-                    inp_address = self.__get_address_from_tx_outputs(
-                        tx_in["previousOutpoint"]["transactionId"],
-                        tx_in["previousOutpoint"].get("index", 0),
-                    )
-
-                    # if tx is in the output cache and not in DB yet
-                    if inp_address is None and self.add_tx_addr_mapping:
-                        for output in self.txs_output:
-                            if output.transaction_id == tx_in["previousOutpoint"][
-                                "transactionId"
-                            ] and output.index == tx_in["previousOutpoint"].get(
-                                "index", 0
-                            ):
-                                inp_address = output.script_public_key_address
-                                break
-
-                    staging_tx_addr_mapping.append(
-                        TxAddrMapping(
-                            transaction_id=tx_id,
-                            address=inp_address,
-                            block_time=int(transaction["verboseData"]["blockTime"]),
-                            is_accepted=False,
-                        )
-                    )
+                for input_result, mapping_result in input_results:
+                    staging_txs_inputs.append(input_result)
+                    if mapping_result:
+                        staging_tx_addr_mapping.append(mapping_result)
 
                 # Add transaction
                 self.txs[tx_id] = Transaction(
@@ -237,9 +251,7 @@ class BlocksProcessor(object):
             _logger.info("Skipping tx-addr mapping")
             return
 
-        cnt = 0
-
-        with session_maker() as session:
+        try:
             to_be_added = []
             for tx_addr_mapping in self.tx_addr_mapping:
                 if (
@@ -249,80 +261,100 @@ class BlocksProcessor(object):
                     )
                 ) not in self.tx_addr_cache:
                     to_be_added.append(tx_addr_mapping)
-                    cnt += 1
                     self.tx_addr_cache.append(tx_addr_tuple)
 
-            session.bulk_save_objects(to_be_added)
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-                _logger.error("Error adding tx-address mapping")
-                raise
+            await self.insert_batches(TxAddrMapping, to_be_added)
 
-            _logger.info(f"Added {cnt} tx-address mapping items successfully")
+            _logger.info(
+                f"Added {len(to_be_added)} tx-address mapping items successfully"
+            )
 
-        self.tx_addr_mapping = []
-        self.tx_addr_cache = self.tx_addr_cache[-100:]  # get the next 100 items
+            self.tx_addr_mapping = []
+            self.tx_addr_cache = self.tx_addr_cache[-100:]  # keep the last 100 items
+
+        except IntegrityError:
+            _logger.error("Error adding tx-address mapping")
+            raise
+
+    async def update_transaction_block_hash(self, session, tx_item):
+        if self.update_block_hash:
+            new_block_hash = list(
+                set(tx_item.block_hash)
+                | set(self.txs[tx_item.transaction_id].block_hash)
+            )
+            stmt = (
+                update(Transaction)
+                .where(Transaction.transaction_id == tx_item.transaction_id)
+                .values(block_hash=new_block_hash)
+            )
+            await session.execute(stmt)
+
+        # self.txs.pop(tx_item.transaction_id)
 
     async def commit_txs(self):
         """
-        Add all queued transactions and it's in- and outputs to database
+        Add all queued transactions and their inputs and outputs to database concurrently in multiple batches
         """
-        # First go through all transactions and check, if there are already added ones.
-        # If yes, update block_hash and remove from queue
         tx_ids_to_add = list(self.txs.keys())
-        with session_maker() as session:
-            tx_items = (
-                session.query(Transaction)
-                .filter(Transaction.transaction_id.in_(tx_ids_to_add))
-                .all()
+
+        _logger.info(f"Finding existing transactions in DB and update block_hash")
+        async with async_session_maker() as session:
+            # Check for existing transactions and update block_hash
+            existing_tx_query = select(Transaction).filter(
+                Transaction.transaction_id.in_(tx_ids_to_add)
             )
-            for tx_item in tx_items:
-                if self.update_block_hash:
-                    tx_item.block_hash = list(
-                        (
-                            set(tx_item.block_hash)
-                            | set(self.txs[tx_item.transaction_id].block_hash)
-                        )
-                    )
-                self.txs.pop(tx_item.transaction_id)
+            existing_tx_result = await session.execute(existing_tx_query)
+            existing_tx_items = existing_tx_result.scalars().all()
 
-            session.commit()
+            tasks = [
+                self.update_transaction_block_hash(session, tx_item)
+                for tx_item in existing_tx_items
+            ]
+            await asyncio.gather(*tasks)
+            await session.commit()
 
-        with session_maker() as session:
-            _logger.info(f"Start: Adding {len(self.txs)} TXs to database")
-            session.bulk_save_objects(self.txs.values())
+        _logger.info(
+            f"Finished finding existing transactions in DB and update block_hash, {len(self.txs)} transactions left"
+        )
+        if len(self.txs) == 0:
+            _logger.info("No transactions to add")
+            return
 
-            _logger.debug(f"Added {len(self.txs)} TXs to database")
+        _logger.debug(
+            f"Start: Adding {len(self.txs)} TXs, {len(self.txs_output)} outputs, {len(self.txs_input)} inputs"
+        )
 
-            pending_objects = []
+        try:
+            await asyncio.gather(
+                self.insert_batches(Transaction, list(self.txs.values())),
+                self.insert_batches(
+                    TransactionOutput,
+                    [out for out in self.txs_output if out.transaction_id in self.txs],
+                ),
+                self.insert_batches(
+                    TransactionInput,
+                    [inp for inp in self.txs_input if inp.transaction_id in self.txs],
+                ),
+            )
 
-            for tx_output in self.txs_output:
-                if tx_output.transaction_id in self.txs:
-                    pending_objects.append(tx_output)
+            _logger.debug(
+                f"Added {len(self.txs)} TXs, {len(self.txs_output)} outputs, {len(self.txs_input)} inputs"
+            )
 
-            for tx_input in self.txs_input:
-                if tx_input.transaction_id in self.txs:
-                    pending_objects.append(tx_input)
+            # Prepare batch for TxAddressMappingProcessor
+            # await self.tx_addr_mapping_processor.add_batch(
+            #     self.txs, self.txs_output, self.txs_input
+            # )
+            # self.tx_addr_mapping_processor.start_processing()
 
-            session.bulk_save_objects(pending_objects)
+            # Reset queues
+            self.txs = {}
+            self.txs_input = []
+            self.txs_output = []
 
-            try:
-                session.commit()
-                _logger.debug(
-                    f"Added {len(self.txs_output)} outputs, {len(self.txs_input)} inputs"
-                )
-
-                # reset queues
-                self.txs = {}
-                self.txs_input = []
-                self.txs_output = []
-
-            except IntegrityError:
-                session.rollback()
-                _logger.error(f"Error adding TXs to database")
-                raise
+        except IntegrityError:
+            _logger.error("Error adding TXs to database")
+            raise
 
     async def __add_block_to_queue(self, block_hash, block):
         """
@@ -389,3 +421,22 @@ class BlocksProcessor(object):
         Checks if given TX ID is already in the queue
         """
         return tx_id in self.txs
+
+    async def insert_batches(self, model: Type, items: List):
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_BATCHES)
+
+        async def insert_single_batch(batch):
+            async with semaphore:
+                async with async_session_maker() as batch_session:
+                    batch_dicts = [item.__dict__ for item in batch]
+                    for item_dict in batch_dicts:
+                        item_dict.pop("_sa_instance_state", None)
+                    await batch_session.execute(insert(model), batch_dicts)
+                    await batch_session.commit()
+
+        tasks = []
+        for i in range(0, len(items), BATCH_SIZE):
+            batch = items[i : i + BATCH_SIZE]
+            tasks.append(asyncio.create_task(insert_single_batch(batch)))
+
+        await asyncio.gather(*tasks)

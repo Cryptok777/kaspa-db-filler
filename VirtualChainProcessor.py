@@ -27,7 +27,6 @@ class VirtualChainProcessor(object):
         self.start_point = start_point
         self.client = client
         self.should_update_balances = False
-        self.add_tx_addr_mapping = False
 
     async def __get_balances_for_addresses(self, addresses: List[str]):
         resp = await self.client.request(
