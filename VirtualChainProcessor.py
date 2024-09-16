@@ -122,24 +122,18 @@ class VirtualChainProcessor(object):
                 f"START: Set is_accepted=True for txs in {len(accepted_ids)} blocks"
             )
 
-            tx_count = 0
             for accepting_block_hash, accepted_tx_ids in accepted_ids:
-                tx_count += (
-                    s.query(Transaction)
-                    .filter(Transaction.transaction_id.in_(accepted_tx_ids))
-                    .update(
-                        {
-                            "is_accepted": True,
-                            "accepting_block_hash": accepting_block_hash,
-                        }
-                    )
+                s.query(Transaction).filter(
+                    Transaction.transaction_id.in_(accepted_tx_ids)
+                ).update(
+                    {"is_accepted": True, "accepting_block_hash": accepting_block_hash}
                 )
 
                 status_updated_tx_ids.extend(accepted_tx_ids)
 
             s.commit()
             _logger.debug(
-                f"DONE: Set is_accepted=True for txs in {len(accepted_ids)} blocks, total updated {tx_count} txs"
+                f"DONE: Set is_accepted=True for txs in {len(accepted_ids)} blocks"
             )
 
             if self.should_update_balances:
