@@ -10,6 +10,7 @@ asyncpg = "*"
 grpcio = "*"
 grpcio-tools = "*"
 load_dotenv = "*"
+greenlet = "*"
 
 [dev-packages]
 black = "*"
