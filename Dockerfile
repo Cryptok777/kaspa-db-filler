@@ -7,6 +7,7 @@ EXPOSE 8000
 ARG version
 ENV VERSION=$version
 
+
 RUN apk --no-cache add \
   git \
   gcc \
