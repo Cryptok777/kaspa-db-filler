@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import os
-from dotenv import load_dotenv
+
+# from dotenv import load_dotenv
 
 from BlocksProcessor import BlocksProcessor
 from VirtualChainProcessor import VirtualChainProcessor
@@ -12,7 +13,7 @@ from models.Transaction import Transaction
 from models.TxAddrMapping import TxAddrMapping
 from sqlalchemy import text
 
-load_dotenv(override=True)
+# load_dotenv(override=True)
 
 logging.basicConfig(
     format="%(asctime)s::%(levelname)s::%(name)s::%(message)s",
