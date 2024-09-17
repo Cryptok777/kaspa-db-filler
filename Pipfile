@@ -9,8 +9,8 @@ psycopg2 = {extras = ["async"], version = "*"}
 asyncpg = "*"
 grpcio = "*"
 grpcio-tools = "*"
-load_dotenv = "*"
 greenlet = "*"
+python-dotenv = "*"
 
 [dev-packages]
 black = "*"
