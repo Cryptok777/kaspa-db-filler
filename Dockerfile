@@ -1,6 +1,11 @@
 FROM python:3.10-alpine
 
-WORKDIR /app
+ARG REPO_DIR
+
+EXPOSE 8000
+
+ARG version
+ENV VERSION=$version
 
 RUN apk --no-cache add \
   git \
@@ -11,20 +16,20 @@ RUN apk --no-cache add \
   libpq-dev \
   dumb-init
 
-# Install pipenv
-RUN pip install pipenv
+RUN pip install \
+  pipenv
 
-# Copy only the Pipfile and Pipfile.lock first to leverage Docker cache
-COPY Pipfile Pipfile.lock ./
+RUN addgroup -S -g 55746 api \
+  && adduser -h /app -S -D -g '' -G api -u 55746 api
 
-# Install dependencies
-RUN pipenv install --deploy --system
+WORKDIR /app
 
-# Copy the rest of the application
-COPY . .
+USER api
 
-# Use dumb-init as the entrypoint
+COPY --chown=api:api . /app
+
+RUN pipenv install --deploy
+
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
-# Command to run the application
-CMD ["pipenv", "run", "python", "main.py"]
+CMD pipenv run python main.py
