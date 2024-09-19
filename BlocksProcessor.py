@@ -54,7 +54,7 @@ class BlocksProcessor(object):
         # Toggles
         self.add_tx_addr_mapping = True
         self.add_tx_addr_mapping_async = not self.add_tx_addr_mapping
-        self.update_block_hash = True
+        self.update_block_hash = False
 
         self.tx_addr_mapping_processor = TxAddressMappingProcessor()
 
