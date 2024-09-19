@@ -53,6 +53,7 @@ class BlocksProcessor(object):
 
         # Toggles
         self.add_tx_addr_mapping = False
+        self.add_tx_addr_mapping_async = not self.add_tx_addr_mapping
         self.update_block_hash = False
 
         self.tx_addr_mapping_processor = TxAddressMappingProcessor()
@@ -75,6 +76,11 @@ class BlocksProcessor(object):
                 await self.commit_blocks()
                 await self.commit_txs()
                 await self.add_and_commit_tx_addr_mapping()
+
+                if self.add_tx_addr_mapping_async:
+                    await self.tx_addr_mapping_processor.add_batch()
+                    self.tx_addr_mapping_processor.start_processing()
+
                 await self.on_commited()
 
     async def blockiter(self, start_point):
@@ -340,10 +346,6 @@ class BlocksProcessor(object):
             _logger.debug(
                 f"Added {len(self.txs)} TXs, {len(self.txs_output)} outputs, {len(self.txs_input)} inputs"
             )
-
-            # Prepare batch for TxAddressMappingProcessor
-            await self.tx_addr_mapping_processor.add_batch()
-            self.tx_addr_mapping_processor.start_processing()
 
             # Reset queues
             self.txs = {}
