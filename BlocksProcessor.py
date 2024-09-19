@@ -52,7 +52,7 @@ class BlocksProcessor(object):
         self.synced = False
 
         # Toggles
-        self.add_tx_addr_mapping = True
+        self.add_tx_addr_mapping = False
         self.add_tx_addr_mapping_async = not self.add_tx_addr_mapping
         self.update_block_hash = False
 
