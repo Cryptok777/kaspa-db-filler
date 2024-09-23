@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 import logging
 from typing import List
-import os
 
 from dbsession import session_maker
 from models.AddressBalance import AddressBalance
@@ -27,7 +26,7 @@ class VirtualChainProcessor(object):
         self.virtual_chain_response = None
         self.start_point = start_point
         self.client = client
-        self.should_update_balances = os.getenv("FULL_INDEX_MODE", True)
+        self.should_update_balances = False
 
     async def __get_balances_for_addresses(self, addresses: List[str]):
         resp = await self.client.request(
